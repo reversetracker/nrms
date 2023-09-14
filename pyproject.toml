@@ -54,12 +54,13 @@ tzdata = "^2023.3"
 urllib3 = ">=1.25.4"
 aioboto3 = "10.3.0"
 aiobotocore = {version = "2.4.1", extras = ["boto3"]}
-pydantic = "^2.3.0"
+pydantic = "^2.0.8"
 pydantic-settings = "^2.0.3"
 google-cloud-bigquery = "^3.11.4"
 matplotlib = "^3.7.2"
 transformers = {extras = ["torch"], version = "^4.33.1"}
 pytorch-lightning = "^2.0.8"
+lightning = {extras = ["extra"], version = "^2.0.8"}
 
 [build-system]
 requires = ["poetry-core"]

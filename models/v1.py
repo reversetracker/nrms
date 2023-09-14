@@ -34,11 +34,16 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, d_model: int, nhead: int):
+    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
         super(NewsEncoder, self).__init__()
-        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead, batch_first=True)
-        self.fc = nn.Linear(d_model, d_model)
-        self.additional_attn = nn.Parameter(torch.randn(d_model))
+        self.multi_head_attention = nn.MultiheadAttention(
+            emb_dim, n_head, batch_first=True, dropout=dropout
+        )
+        self.fc = nn.Linear(emb_dim, emb_dim)
+        self.additional_attn = nn.Parameter(torch.randn(emb_dim))
+        self.norm_1 = nn.LayerNorm(emb_dim)
+        self.norm_2 = nn.LayerNorm(emb_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None):
         print(f"x shape: {x.shape}")
@@ -47,15 +52,21 @@ class NewsEncoder(nn.Module):
 
         all_true_rows = key_padding_mask.all(dim=1)
         key_padding_mask[all_true_rows] = False
-        attn_output, _ = self.multi_head_attention(
-            x, x, x, key_padding_mask=key_padding_mask
-        )
+        attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_mask)
+
+        # with residual net
+        attn_output = self.norm_1(attn_output + x)
         print(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([8192, 20, 128])
+
+        # without residual net
+        # attn_output = self.norm1(attn_output)
+        # print(f"attn_output shape: {attn_output.shape}")
 
         # attention output 을 새로운 차원으로 projection 한다.
         # 데이터의 특징을 재조정 하고 필요한 정보를 과장 및 필요 없는 정보를 축소
         fc_output = self.fc(attn_output)
+        fc_output = self.norm_2(fc_output)
         print(f"fc_output shape: {fc_output.shape}")
         # fc_output shape: torch.Size([8192, 20, 128])
 
@@ -69,6 +80,7 @@ class NewsEncoder(nn.Module):
         # 20 단어, 8192 (배치), 128 (임베딩 사이즈) -> 128 임베딩이 스칼라(중요도)로 변환 되며
         # 즉 20개의 단어들의 중요도를 scalar 로 표현
         additional_attn_output = tanh_output.matmul(self.additional_attn)
+        additional_attn_output = self.dropout(additional_attn_output)
         print(f"additional_attn_output shape: {additional_attn_output.shape}")
         # additional_attn_output shape: torch.Size([8192, 20])
 
@@ -96,11 +108,13 @@ class NewsEncoder(nn.Module):
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, d_model, nhead):
+    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
         super(UserEncoder, self).__init__()
-        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead, batch_first=True)
-        self.fc = nn.Linear(d_model, d_model)
-        self.additional_attn = nn.Parameter(torch.randn(d_model))
+        self.multi_head_attention = nn.MultiheadAttention(
+            emb_dim, n_head, batch_first=True, dropout=dropout
+        )
+        self.fc = nn.Linear(emb_dim, emb_dim)
+        self.additional_attn = nn.Parameter(torch.randn(emb_dim))
 
     def forward(self, x):
         print(f"x shape: {x.shape}")
@@ -170,9 +184,10 @@ class NRMS(pl.LightningModule):
         titles, labels, mask = batch
         scores = self.forward(titles, mask)
         loss = self.criterion(scores, labels.float())
+        print(f"train_loss: {loss}")
         return loss
 
     def configure_optimizers(self):
         parameters = list(self.news_encoder.parameters()) + list(self.user_encoder.parameters())
-        optimizer = optim.Adam(parameters, lr=0.0001)
+        optimizer = optim.Adam(parameters, lr=0.0001, weight_decay=1e-5)
         return optimizer

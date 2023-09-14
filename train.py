@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
@@ -7,20 +9,27 @@ import datasets.v1
 import directories
 from models.v1 import NRMS
 
+parallel_num = 4
+
+torch.set_num_threads(parallel_num)
+torch.set_num_interop_threads(parallel_num)
 torch.autograd.set_detect_anomaly(True)
 
-users = 64  # batch_size
-articles = 64  # article number per user read
-seq_length = 20  # 기사당 단어 수
-embed_size = 768  # 임베딩 차원
-num_heads = 8  # 대가리 수
+batch_size = 64  # users
+articles = 64  # articles
+seq_length = 20  # words number of each article
+embed_size = 768  # embedding size
+num_heads = 8  # number of heads
 
-dataframe = pd.read_csv(directories.bq_results)
-dataset = datasets.v1.OheadlineDataset(dataframe)
-dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
-model = NRMS(embed_size, num_heads)
+def main():
+    dataframe = pd.read_csv(directories.bq_results)
+    dataset = datasets.v1.OheadlineDataset(dataframe)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
+    nrms = NRMS(embed_size, num_heads)
+    trainer = pl.Trainer(max_epochs=100, log_every_n_steps=1)
+    trainer.fit(nrms, dataloader)
 
-# Lightning trainer
-trainer = pl.Trainer(max_epochs=100)
-trainer.fit(model, dataloader)
+
+if __name__ == "__main__":
+    main()
