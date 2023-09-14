@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 from transformers import ElectraModel, ElectraTokenizer
 
@@ -33,6 +34,37 @@ def texts_to_embeddings(
     embeddings = outputs.last_hidden_state
     masks = tokens["attention_mask"]
     return embeddings, masks
+
+
+def precompute_embeddings(
+    df: pd.DataFrame,
+    target_column: str,
+    destination_column: str,
+    mask_column: str = "mask",
+) -> pd.DataFrame:
+    """
+    Precomputes embeddings for the target column and saves them in the embedding_column.
+
+    Parameters:
+    - df (pd.DataFrame): The dataframe containing the data.
+    - target_column (str): The column of the dataframe for which embeddings are to be computed.
+    - destination_column (str): The column where computed embeddings will be saved.
+
+    Returns:
+    - pd.DataFrame: DataFrame with the computed embeddings.
+    """
+
+    all_titles = df[target_column].unique().tolist()
+    embeddings, masks = texts_to_embeddings(all_titles)
+    embeddings, masks = embeddings.numpy(), masks.numpy()
+
+    embedding_dict = {title: emb for title, emb in zip(all_titles, embeddings)}
+    mask_dict = {title: mask for title, mask in zip(all_titles, masks)}
+
+    df[destination_column] = df[target_column].map(embedding_dict)
+    df[mask_column] = df[target_column].map(mask_dict)
+
+    return df
 
 
 if __name__ == "__main__":
