@@ -97,7 +97,7 @@ class OheadlineDataset(Dataset):
 if __name__ == "__main__":
     dataframe = pd.read_csv(directories.bq_results)
     dataset = OheadlineDataset(dataframe)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
     for titles, labels, masks in dataloader:
         print(titles.shape)
         # torch.Size([64, 64, 20, 128])

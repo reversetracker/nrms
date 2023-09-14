@@ -1,9 +1,7 @@
-import os
-
 import pandas as pd
+import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
-import pytorch_lightning as pl
 
 import datasets.v1
 import directories
