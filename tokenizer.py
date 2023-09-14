@@ -1,36 +1,43 @@
-import random
-
+import torch
 from transformers import ElectraModel, ElectraTokenizer
-
 
 TOKENIZER = ElectraTokenizer.from_pretrained("monologg/koelectra-base-v3-discriminator")
 
 MODEL = ElectraModel.from_pretrained("monologg/koelectra-base-v3-discriminator")
 
 
-def tokenize(text: str | None, sequence_size: int = 20) -> list[list[float]]:
-    """한 기사의 타이틀의 기사 제목을 최대 20 개로 맞추며 부족 한 경우 패딩을 넣어 20 개를 채움."""
-
-    if not text or isinstance(text, float):
-        return [[0.001 for _ in range(128)] for _ in range(sequence_size)]
-
-    tokens = [token for token in text.split(" ") if token]
-    tokens = [[(random.randint(1, 100) / 100) for _ in range(128)] for _ in tokens]
-    tokens = tokens[:sequence_size]
-    paddings = [[0.001 for _ in range(128)] for _ in range(sequence_size - len(tokens))]
-    return tokens + paddings
+def tokenize(self, texts: list[str]) -> dict:
+    tokens = TOKENIZER(
+        texts,
+        return_tensors="pt",  # return pytorch tensor
+        truncation=True,
+        max_length=self.max_length,
+        padding="max_length"
+    )
+    return tokens
 
 
-def texts_to_embeddings(texts: list[str], sequence_size: int = 20) -> list[list[float]]:
+def texts_to_embeddings(texts: list[str], max_length: int = 20) -> tuple[torch.Tensor, torch.Tensor]:
     """Text 를 입력 받아서 임베딩 벡터로 변환."""
     tokens = TOKENIZER(
-        texts, return_tensors="pt", truncation=True, max_length=sequence_size, padding="max_length"
+        texts,
+        return_tensors="pt",  # return pytorch tensor
+        truncation=True,
+        max_length=max_length,
+        padding="max_length",
     )
     outputs = MODEL(**tokens)
     embeddings = outputs.last_hidden_state
-    return embeddings
+    masks = tokens['attention_mask']
+    return embeddings, masks
 
 
 if __name__ == "__main__":
-    embeddings = texts_to_embeddings(["안녕하세요", "반갑습니다."])
-    print(embeddings.shape)
+    embeddings, masks = texts_to_embeddings(
+        [
+            "이것은 테스트 문장 입니다.",
+            "이것은 십새키 입니다.",
+        ]
+    )
+    print(embeddings.shape, masks.shape)
+    # torch.Size([2, 20, 768]) torch.Size([2, 20])

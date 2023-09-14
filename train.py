@@ -12,7 +12,7 @@ torch.autograd.set_detect_anomaly(True)
 users = 64  # batch_size
 articles = 64  # article number per user read
 seq_length = 20  # 기사당 단어 수
-embed_size = 128  # 임베딩 차원
+embed_size = 768  # 임베딩 차원
 num_heads = 8  # 대가리 수
 
 dataframe = pd.read_csv(directories.bq_results)
@@ -31,25 +31,25 @@ criterion = nn.BCEWithLogitsLoss()
 epochs = 100
 for epoch in range(epochs):
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-    for titles, labels, mask in dataloader:
+    for titles, labels, masks in dataloader:
         print(f"Batched titles shape: {titles.shape}")
-        # Titles shape: torch.Size([64, 64, 20, 128])
+        # Batched titles shape: torch.Size([64, 64, 20, 768])
 
         print(f"Batched labels shape: {labels.shape}")
-        # Labels shape: torch.Size([64, 64])
+        # Batched labels shape: torch.Size([64, 64])
 
-        print(f"Batched mask shape: {mask.shape}")
-        # Mask shape: torch.Size([64, 64, 20])
+        print(f"Batched masks shape: {masks.shape}")
+        # Batched masks shape: torch.Size([64, 64, 20])
 
         reshaped_title = titles.view(users * articles, seq_length, embed_size)
         print(f"Reshaped titles shape: {reshaped_title.shape}")
-        # Reshaped titles shape: torch.Size([4096, 20, 128])
+        # Reshaped titles shape: torch.Size([4096, 20, 768])
 
-        reshaped_mask = mask.view(users * articles, seq_length)
-        print(f"Reshaped mask shape: {reshaped_mask.shape}")
-        # Reshaped mask shape: torch.Size([4096, 20])
+        reshaped_masks = masks.view(users * articles, seq_length)
+        print(f"Reshaped masks shape: {reshaped_masks.shape}")
+        # Reshaped masks shape: torch.Size([4096, 20])
 
-        news_output = news_encoder(reshaped_title, reshaped_mask)
+        news_output = news_encoder(reshaped_title, reshaped_masks)
         news_output = news_output.view(users, articles, embed_size)
         user_output = user_encoder(news_output)
 
