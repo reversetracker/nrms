@@ -1,11 +1,11 @@
 # Installation
 
-1. Poetry
+## 1. Poetry
 ```zsh
 poetry install
 ```
 
-2. Pip
+## 2. Pip
 ```zsh
 pip install -r requirements.txt
 ```
@@ -18,24 +18,24 @@ The purpose of the News Encoder is to learn news representations from news title
 
 - **Word Embedding Layer**: Converts a news title from a sequence of words into low-dimensional embedding vectors.
   
-  ```markdown
-  [w1, w2, ..., wM] -> [e1, e2, ..., eM]
-  ```
+```markdown
+[w1, w2, ..., wM] -> [e1, e2, ..., eM]
+```
 
 - **Word-level Multi-head Self-attention Layer**: Captures interactions between words which are important for learning news representations. This layer is advantageous as it can capture long-distance interactions between words in a news title.
   
-  ```math
-  α_k_i,j = exp(e_i^T Qw_k e_j) / sum(exp(e_i^T Qw_k e_m))
-  h_w_i,k = Vw_k * sum(α_k_i,j * e_j)
-  ```
+```math
+α_k_i,j = exp(e_i^T Qw_k e_j) / sum(exp(e_i^T Qw_k e_m))
+h_w_i,k = Vw_k * sum(α_k_i,j * e_j)
+```
 
 - **Additive Word Attention Network**: Selects important words in news titles to create more informative news representations.
   
-  ```math
-  a_w_i = q_w^T tanh(Vw * h_w_i + vw)
-  α_w_i = exp(a_w_i) / sum(exp(a_w_j))
-  r = sum(α_w_i * h_w_i)
-  ```
+```math
+a_w_i = q_w^T tanh(Vw * h_w_i + vw)
+α_w_i = exp(a_w_i) / sum(exp(a_w_j))
+r = sum(α_w_i * h_w_i)
+```
 
 ## 2. **User Encoder**
 
@@ -43,18 +43,18 @@ The User Encoder module learns representations of users based on the news they'v
 
 - **News-level Multi-head Self-attention Network**: Enhances news representations by capturing interactions between the news articles browsed by the user.
   
-  ```math
-  β_k_i,j = exp(r_i^T Qn_k r_j) / sum(exp(r_i^T Qn_k r_m))
-  h_n_i,k = Vn_k * sum(β_k_i,j * r_j)
-  ```
+```math
+β_k_i,j = exp(r_i^T Qn_k r_j) / sum(exp(r_i^T Qn_k r_m))
+h_n_i,k = Vn_k * sum(β_k_i,j * r_j)
+```
 
 - **Additive News Attention Network**: Selects important news to better represent users based on their browsing history.
   
-  ```math
-  a_n_i = q_n^T tanh(Vn * h_n_i + vn)
-  α_n_i = exp(a_n_i) / sum(exp(a_n_j))
-  u = sum(α_n_i * h_n_i)
-  ```
+```math
+a_n_i = q_n^T tanh(Vn * h_n_i + vn)
+α_n_i = exp(a_n_i) / sum(exp(a_n_j))
+u = sum(α_n_i * h_n_i)
+```
 
 ## 3. **Click Predictor**
 
@@ -73,6 +73,6 @@ pi = exp(yˆ_+i) / (exp(yˆ_+i) + sum(exp(yˆ_-i,j)))
 L = -sum(log(pi))
 ```
 
-## Unresolved Troubleshooting
-1. dataset 병목 제거 필요..
-2. 
+# Unresolved Troubleshooting
+## 1. dataset 병목 제거 필요..
+## 2. 
