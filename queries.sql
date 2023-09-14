@@ -5,7 +5,7 @@ WITH PositiveSamples AS (
   SELECT
     user_property.user_id as user_id,
     data.article_id as article_id,
-    TRUE as watch_or_not,
+    TRUE as has_viewed,
     data.determined_at as time
   FROM
     `oheadline.analytics_server_prod.viewDetailArticle`
@@ -16,7 +16,7 @@ NegativeSamples AS (
   SELECT
     user_property.user_id as user_id,
     data.article_id as article_id,
-    FALSE as watch_or_not,
+    FALSE as has_viewed,
     data.determined_at as time
   FROM
     `oheadline.analytics_server_prod.viewListArticle`
@@ -31,14 +31,14 @@ CombinedSamples AS (
 RankedSamples AS (
   SELECT
     *,
-    ROW_NUMBER() OVER (PARTITION BY user_id, watch_or_not ORDER BY time DESC) as rank
+    ROW_NUMBER() OVER (PARTITION BY user_id, has_viewed ORDER BY time DESC) as rank
   FROM
     CombinedSamples
 )
 SELECT
   user_id,
   article_id,
-  watch_or_not,
+  has_viewed,
   time
 FROM
   RankedSamples
@@ -46,7 +46,7 @@ WHERE
   rank <= 32
 ORDER BY
   user_id,
-  watch_or_not DESC,
+  has_viewed DESC,
   time DESC;
 
 
@@ -54,7 +54,7 @@ WITH PositiveSamples AS (
   SELECT
     user_property.user_id as user_id,
     data.article_id as article_id,
-    TRUE as watch_or_not,
+    TRUE as has_viewed,
     data.determined_at as time,
     ROW_NUMBER() OVER (PARTITION BY user_property.user_id ORDER BY data.determined_at DESC) as pos_rank
   FROM
@@ -66,7 +66,7 @@ NegativeSamples AS (
   SELECT
     user_property.user_id as user_id,
     data.article_id as article_id,
-    FALSE as watch_or_not,
+    FALSE as has_viewed,
     data.determined_at as time,
     ROW_NUMBER() OVER (PARTITION BY user_property.user_id ORDER BY data.determined_at DESC) as neg_rank
   FROM
@@ -82,7 +82,7 @@ CombinedSamples AS (
 RankedSamples AS (
   SELECT
     *,
-    ROW_NUMBER() OVER (PARTITION BY user_id, watch_or_not ORDER BY time DESC) as rank
+    ROW_NUMBER() OVER (PARTITION BY user_id, has_viewed ORDER BY time DESC) as rank
   FROM
     CombinedSamples
 ),
@@ -94,24 +94,24 @@ MatchedRanks AS (
     pos.time as pos_time,
     neg.time as neg_time
   FROM (
-    SELECT * FROM RankedSamples WHERE watch_or_not = TRUE
+    SELECT * FROM RankedSamples WHERE has_viewed = TRUE
   ) pos
   JOIN (
-    SELECT * FROM RankedSamples WHERE watch_or_not = FALSE
+    SELECT * FROM RankedSamples WHERE has_viewed = FALSE
   ) neg
   ON pos.user_id = neg.user_id AND pos.rank = neg.rank
 )
 SELECT
   user_id,
   CASE
-    WHEN watch_or_not THEN pos_article
+    WHEN has_viewed THEN pos_article
     ELSE neg_article
   END as article_id,
-  watch_or_not,
+  has_viewed,
   CASE
-    WHEN watch_or_not THEN pos_time
+    WHEN has_viewed THEN pos_time
     ELSE neg_time
   END as time
 FROM MatchedRanks,
-UNNEST([TRUE, FALSE]) as watch_or_not
-ORDER BY user_id, watch_or_not DESC, time DESC;
+UNNEST([TRUE, FALSE]) as has_viewed
+ORDER BY user_id, has_viewed DESC, time DESC;
