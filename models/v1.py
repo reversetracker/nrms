@@ -62,6 +62,7 @@ class NewsEncoder(nn.Module):
         # without residual net
         # attn_output = self.norm1(attn_output)
         # print(f"attn_output shape: {attn_output.shape}")
+        # attn_output shape: torch.Size([8192, 20, 128])
 
         # attention output 을 새로운 차원으로 projection 한다.
         # 데이터의 특징을 재조정 하고 필요한 정보를 과장 및 필요 없는 정보를 축소
@@ -115,19 +116,31 @@ class UserEncoder(nn.Module):
         )
         self.fc = nn.Linear(emb_dim, emb_dim)
         self.additional_attn = nn.Parameter(torch.randn(emb_dim))
+        self.norm_1 = nn.LayerNorm(emb_dim)
+        self.norm_2 = nn.LayerNorm(emb_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         print(f"x shape: {x.shape}")
         # x shape: torch.Size([128, 64, 128])
 
         # multi head attention 을 이용하여
-        # news_encoder output embedding 의 attention 벡터로 변환
+        # 'news_encoder 출력벡터' 의 attention 벡터로 변환
         attn_output, _ = self.multi_head_attention(x, x, x)
+
+        # residual net (Note: 논문에는 없음)
+        attn_output = self.norm_1(attn_output + x)
         print(f"attn_output shape: {attn_output.shape}")
+        # attn_output shape: torch.Size([128, 64, 128])
+
+        # without residual net
+        # attn_output = self.norm_1(attn_output)
+        # print(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([128, 64, 128])
 
         # attention vector를 projection 하여 데이터의 특징을 재조정
         fc_output = self.fc(attn_output)
+        fc_output = self.norm_2(fc_output)
         print(f"fc_output shape: {fc_output.shape}")
         # fc_output shape: torch.Size([128, 64, 128])
 
@@ -138,6 +151,7 @@ class UserEncoder(nn.Module):
 
         # 각 기사 벡터를 중요도 scalar로 변환 하기 위해 additional_attn 과 닷 프로덕트 연산.
         additional_attn_output = tanh_output.matmul(self.additional_attn)
+        additional_attn_output = self.dropout(additional_attn_output)
         print(f"additional_attn_output shape: {additional_attn_output.shape}")
         # query_output shape: torch.Size([128, 64])
 
