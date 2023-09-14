@@ -91,7 +91,6 @@ class OheadlineDataset(Dataset):
         # torch.Size([64, 20, 768])
         # torch.Size([64])
         # torch.Size([64, 20])
-
         return titles_tensor, has_viewed_tensor, masks_tensor
 
 
