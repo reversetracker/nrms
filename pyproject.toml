@@ -58,6 +58,8 @@ pydantic = "^2.3.0"
 pydantic-settings = "^2.0.3"
 google-cloud-bigquery = "^3.11.4"
 matplotlib = "^3.7.2"
+transformers = {extras = ["torch"], version = "^4.33.1"}
+pytorch-lightning = "^2.0.8"
 
 [build-system]
 requires = ["poetry-core"]

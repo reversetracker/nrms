@@ -7,6 +7,8 @@ import datasets.v1
 import directories
 import models
 
+torch.autograd.set_detect_anomaly(True)
+
 users = 64  # batch_size
 articles = 64  # article number per user read
 seq_length = 20  # 기사당 단어 수
@@ -40,11 +42,12 @@ for epoch in range(epochs):
         # Mask shape: torch.Size([64, 64, 20])
 
         reshaped_title = titles.view(users * articles, seq_length, embed_size)
-        reshaped_title = reshaped_title.permute(1, 0, 2)
         print(f"Reshaped titles shape: {reshaped_title.shape}")
+        # Reshaped titles shape: torch.Size([4096, 20, 128])
 
         reshaped_mask = mask.view(users * articles, seq_length)
         print(f"Reshaped mask shape: {reshaped_mask.shape}")
+        # Reshaped mask shape: torch.Size([4096, 20])
 
         news_output = news_encoder(reshaped_title, reshaped_mask)
         news_output = news_output.view(users, articles, embed_size)

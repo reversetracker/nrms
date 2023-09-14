@@ -11,16 +11,14 @@ num_heads = 8
 dataset = torch.rand((users, articles, seq_length, embed_size))
 labels = torch.randint(0, 2, (users, articles))
 print(f"dataset shape: {dataset.shape}")
+# dataset shape: torch.Size([128, 64, 20, 128])
 print(f"labels shape: {labels.shape}")
+# labels shape: torch.Size([128, 64])
 
 dataset_reshaped = dataset.view(users * articles, seq_length, embed_size)
-# torch mha expected input shape 이상함
-dataset_reshaped = dataset_reshaped.permute(1, 0, 2)
 labels_reshaped = labels.view(users * articles)
-
 print(f"dataset_reshaped shape: {dataset_reshaped.shape}")
-# dataset_reshaped shape: torch.Size([20, 8192, 128])
-
+# dataset_reshaped shape: torch.Size([8192, 20, 128])
 print(f"labels_reshaped shape: {labels_reshaped.shape}")
 # labels_reshaped shape: torch.Size([8192])
 
@@ -36,7 +34,6 @@ print(f"reshaped_news_output shape: {reshaped_news_output.shape}")
 # reshaped_news_output shape: torch.Size([128, 64, 128])
 
 user_output = user_encoder(reshaped_news_output)
-
 print(f"user_output shape: {user_output.shape}")
 # user_output shape: torch.Size([128, 128])
 

@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import optim
+
+import pytorch_lightning as pl
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -33,29 +36,33 @@ class MultiHeadSelfAttention(nn.Module):
 class NewsEncoder(nn.Module):
     def __init__(self, d_model: int, nhead: int):
         super(NewsEncoder, self).__init__()
-        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead)
+        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead, batch_first=True)
         self.fc = nn.Linear(d_model, d_model)
         self.additional_attn = nn.Parameter(torch.randn(d_model))
 
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None):
         print(f"x shape: {x.shape}")
-        # x shape: torch.Size([20, 8192, 128])
+        # x shape: torch.Size([users * articles, article title word size, word embedding size])
+        # x shape: torch.Size([8192, 20, 128])
 
-        attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_mask)
-
+        all_true_rows = key_padding_mask.all(dim=1)
+        key_padding_mask[all_true_rows] = False
+        attn_output, _ = self.multi_head_attention(
+            x, x, x, key_padding_mask=key_padding_mask
+        )
         print(f"attn_output shape: {attn_output.shape}")
-        # attn_output shape: torch.Size([20, 8192, 128])
+        # attn_output shape: torch.Size([8192, 20, 128])
 
         # attention output 을 새로운 차원으로 projection 한다.
         # 데이터의 특징을 재조정 하고 필요한 정보를 과장 및 필요 없는 정보를 축소
         fc_output = self.fc(attn_output)
         print(f"fc_output shape: {fc_output.shape}")
-        # fc_output shape: torch.Size([20, 8192, 128])
+        # fc_output shape: torch.Size([8192, 20, 128])
 
         # tanh 를 통해 데이터의 특징에 비선형성 추가.
         tanh_output = torch.tanh(fc_output)
         print(f"tanh_output shape: {tanh_output.shape}")
-        # tanh_output shape: torch.Size([20, 8192, 128])
+        # tanh_output shape: torch.Size([8192, 20, 128])
 
         # Additional Attention
         # word embedding 에 weight 을 곱해서 스칼라로 만듬 즉 각 단어의 중요도를 나타냄
@@ -63,23 +70,26 @@ class NewsEncoder(nn.Module):
         # 즉 20개의 단어들의 중요도를 scalar 로 표현
         additional_attn_output = tanh_output.matmul(self.additional_attn)
         print(f"additional_attn_output shape: {additional_attn_output.shape}")
-        # additional_attn_output shape: torch.Size([20, 8192])
+        # additional_attn_output shape: torch.Size([8192, 20])
 
         # 각 단어의 중요도를 softmax 를 통해 확률로 만듬
+        mask_for_softmax = (~all_true_rows).float().unsqueeze(-1)
         softmax_output = F.softmax(additional_attn_output, dim=1)
+        softmax_output = softmax_output * mask_for_softmax
+
         print(f"softmax_output shape: {softmax_output.shape}")
-        # softmax_output shape: torch.Size([20, 8192])
+        # softmax_output shape: torch.Size([8192, 20])
 
         # shape 체크.
         print("softmax_output.unsqueeze(-1) shape:", softmax_output.unsqueeze(-1).shape)
-        # softmax_output.unsqueeze(-1) shape: torch.Size([20, 8192, 1])
+        # softmax_output.unsqueeze(-1) shape: torch.Size([8192, 20, 1])
         print("attn_output shape:", attn_output.shape)
-        # attn_output shape: torch.Size([20, 8192, 128])
+        # attn_output shape: torch.Size([8192, 20, 128])
 
         # Aggregate the Output
         # 각단어의 중요도를 attention_output 에 곱해서 각 단어의 중요도에 따라서
         # attention_output 을 조정
-        out = torch.sum(softmax_output.unsqueeze(-1) * attn_output, dim=0)
+        out = torch.sum(softmax_output.unsqueeze(-1) * attn_output, dim=1)
         print(f"out shape: {out.shape}")
         # out shape: torch.Size([8192, 128])
         return out
@@ -88,7 +98,7 @@ class NewsEncoder(nn.Module):
 class UserEncoder(nn.Module):
     def __init__(self, d_model, nhead):
         super(UserEncoder, self).__init__()
-        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead)
+        self.multi_head_attention = nn.MultiheadAttention(d_model, nhead, batch_first=True)
         self.fc = nn.Linear(d_model, d_model)
         self.additional_attn = nn.Parameter(torch.randn(d_model))
 
@@ -112,7 +122,7 @@ class UserEncoder(nn.Module):
         print(f"tanh_output shape: {tanh_output.shape}")
         # tanh_output shape: torch.Size([128, 64, 128])
 
-        # 각 기사 벡터를 중요도 scalar로 변환 하기 위해 query vector 연산.
+        # 각 기사 벡터를 중요도 scalar로 변환 하기 위해 additional_attn 과 닷 프로덕트 연산.
         additional_attn_output = tanh_output.matmul(self.additional_attn)
         print(f"additional_attn_output shape: {additional_attn_output.shape}")
         # query_output shape: torch.Size([128, 64])
@@ -129,6 +139,40 @@ class UserEncoder(nn.Module):
         # 128명의 유저들이 각각 64개의 기사를 보았고 각각의 기사 벡터는 128 dim 을 가지고 있음
 
         # user가 본 기사들의 벡터를 모두 더하여 user 벡터를 생성합니다.
+        # (users, articles, embed_dim) -> (users, embed_dim)
         out = torch.sum(weighted_attention, dim=1)
         print(f"out shape: {out.shape}")
+        # torch.Size([128, 128])
         return out
+
+
+class NRMS(pl.LightningModule):
+    def __init__(self, embed_size, num_heads):
+        super(NRMS, self).__init__()
+        self.news_encoder = NewsEncoder(embed_size, num_heads)
+        self.user_encoder = UserEncoder(embed_size, num_heads)
+        self.criterion = nn.BCEWithLogitsLoss()
+
+    def forward(self, titles, mask):
+        users, articles, seq_length, embed_size = titles.shape
+
+        reshaped_title = titles.view(users * articles, seq_length, embed_size)
+        reshaped_mask = mask.view(users * articles, seq_length)
+
+        news_output = self.news_encoder(reshaped_title, reshaped_mask)
+        news_output = news_output.view(users, articles, embed_size)
+        user_output = self.user_encoder(news_output)
+
+        scores = torch.bmm(news_output, user_output.unsqueeze(2)).squeeze(2)
+        return scores
+
+    def training_step(self, batch, batch_idx):
+        titles, labels, mask = batch
+        scores = self.forward(titles, mask)
+        loss = self.criterion(scores, labels.float())
+        return loss
+
+    def configure_optimizers(self):
+        parameters = list(self.news_encoder.parameters()) + list(self.user_encoder.parameters())
+        optimizer = optim.Adam(parameters, lr=0.0001)
+        return optimizer
