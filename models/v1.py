@@ -153,13 +153,13 @@ class NRMS(pl.LightningModule):
         self.user_encoder = UserEncoder(embed_size, num_heads)
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, titles, mask):
+    def forward(self, titles, masks):
         users, articles, seq_length, embed_size = titles.shape
 
-        reshaped_title = titles.view(users * articles, seq_length, embed_size)
-        reshaped_mask = mask.view(users * articles, seq_length)
+        reshaped_titles = titles.view(users * articles, seq_length, embed_size)
+        reshaped_masks = masks.view(users * articles, seq_length)
 
-        news_output = self.news_encoder(reshaped_title, reshaped_mask)
+        news_output = self.news_encoder(reshaped_titles, reshaped_masks)
         news_output = news_output.view(users, articles, embed_size)
         user_output = self.user_encoder(news_output)
 
