@@ -31,7 +31,7 @@ def main():
     dataset = datasets.v1.OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
     nrms = NRMS(embed_size, num_heads)
-    trainer = pl.Trainer(max_epochs=100, log_every_n_steps=1, logger=wandb_logger)
+    trainer = pl.Trainer(max_epochs=50, log_every_n_steps=1, logger=wandb_logger)
     trainer.fit(nrms, dataloader)
 
 
