@@ -21,7 +21,7 @@ num_heads = 8  # number of heads
 
 
 def main():
-    dataframe = pd.read_csv(directories.bq_results)
+    dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
     nrms = NRMS(embed_size, num_heads)

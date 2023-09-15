@@ -1,4 +1,4 @@
-import pandas as pd
+import cachetools
 import torch
 from transformers import ElectraModel, ElectraTokenizer
 
@@ -6,69 +6,45 @@ TOKENIZER = ElectraTokenizer.from_pretrained("monologg/koelectra-base-v3-discrim
 
 MODEL = ElectraModel.from_pretrained("monologg/koelectra-base-v3-discriminator")
 
+embeddings_cache = cachetools.LRUCache(maxsize=300000)
 
-def tokenize(self, texts: list[str]) -> dict:
-    tokens = TOKENIZER(
-        texts,
-        return_tensors="pt",  # return pytorch tensor
-        truncation=True,
-        max_length=self.max_length,
-        padding="max_length",
+masks_cache = cachetools.LRUCache(maxsize=300000)
+
+
+def complement(keys: list[str], cache: cachetools.LRUCache) -> list[str]:
+    return [key for key in keys if key not in cache]
+
+
+def tokenize(texts: list[str], max_length: int = 20) -> dict:
+    return TOKENIZER(
+        texts, return_tensors="pt", truncation=True, max_length=max_length, padding="max_length"
     )
-    return tokens
 
 
 def texts_to_embeddings(
     texts: list[str], max_length: int = 20
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Text 를 입력 받아서 임베딩 벡터로 변환."""
-    tokens = TOKENIZER(
-        texts,
-        return_tensors="pt",  # return pytorch tensor
-        truncation=True,
-        max_length=max_length,
-        padding="max_length",
-    )
-    with torch.no_grad():
-        outputs = MODEL(**tokens)
-    embeddings = outputs.last_hidden_state
-    masks = tokens["attention_mask"]
-    return embeddings, masks
+    uncached_texts = complement(texts, embeddings_cache)
 
+    if uncached_texts:
+        tokens = tokenize(uncached_texts, max_length)
+        with torch.no_grad():
+            outputs = MODEL(**tokens)
+        new_embeddings = outputs.last_hidden_state
+        new_masks = tokens["attention_mask"]
 
-def precompute_embeddings(
-    df: pd.DataFrame,
-    target_column: str,
-    destination_column: str,
-    mask_column: str = "mask",
-) -> pd.DataFrame:
-    """
-    Precomputes embeddings for the target column and saves them in the embedding_column.
+        for text, emb, mask in zip(uncached_texts, new_embeddings, new_masks):
+            embeddings_cache[text] = emb
+            masks_cache[text] = mask
+        return texts_to_embeddings(texts, max_length)
 
-    Parameters:
-    - df (pd.DataFrame): The dataframe containing the data.
-    - target_column (str): The column of the dataframe for which embeddings are to be computed.
-    - destination_column (str): The column where computed embeddings will be saved.
+    embeddings = [embeddings_cache[text] for text in texts]
+    masks = [masks_cache[text] for text in texts]
 
-    Returns:
-    - pd.DataFrame: DataFrame with the computed embeddings.
-    """
-
-    all_titles = df[target_column].unique().tolist()
-    embeddings, masks = texts_to_embeddings(all_titles)
-    embeddings, masks = embeddings.numpy(), masks.numpy()
-
-    embedding_dict = {title: emb for title, emb in zip(all_titles, embeddings)}
-    mask_dict = {title: mask for title, mask in zip(all_titles, masks)}
-
-    df[destination_column] = df[target_column].map(embedding_dict)
-    df[mask_column] = df[target_column].map(mask_dict)
-
-    return df
+    return torch.stack(embeddings), torch.stack(masks)
 
 
 if __name__ == "__main__":
     texts = ["이것은 테스트 문장 입니다.", "이것은 십새키 입니다."]
-    embeddings, masks = texts_to_embeddings()
+    embeddings, masks = texts_to_embeddings(texts)
     print(embeddings.shape, masks.shape)
-    # torch.Size([2, 20, 768]) torch.Size([2, 20])
