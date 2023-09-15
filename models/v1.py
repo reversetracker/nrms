@@ -1,9 +1,13 @@
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
 
 import pytorch_lightning as pl
+
+logger = logging.getLogger(__name__)
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -34,7 +38,7 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
+    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.2):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             emb_dim, n_head, batch_first=True, dropout=dropout
@@ -46,34 +50,27 @@ class NewsEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None):
-        print(f"x shape: {x.shape}")
+        logger.debug(f"x shape: {x.shape}")
         # x shape: torch.Size([users * articles, article title word size, word embedding size])
         # x shape: torch.Size([8192, 20, 128])
 
         all_true_rows = key_padding_mask.all(dim=1)
         key_padding_mask[all_true_rows] = False
         attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_mask)
-
-        # with residual net
-        attn_output = self.norm_1(attn_output + x)
-        print(f"attn_output shape: {attn_output.shape}")
-        # attn_output shape: torch.Size([8192, 20, 128])
-
-        # without residual net
-        # attn_output = self.norm1(attn_output)
-        # print(f"attn_output shape: {attn_output.shape}")
+        attn_output = self.norm_1(attn_output)
+        logger.debug(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([8192, 20, 128])
 
         # attention output 을 새로운 차원으로 projection 한다.
         # 데이터의 특징을 재조정 하고 필요한 정보를 과장 및 필요 없는 정보를 축소
         fc_output = self.fc(attn_output)
         fc_output = self.norm_2(fc_output)
-        print(f"fc_output shape: {fc_output.shape}")
+        logger.debug(f"fc_output shape: {fc_output.shape}")
         # fc_output shape: torch.Size([8192, 20, 128])
 
         # tanh 를 통해 데이터의 특징에 비선형성 추가.
         tanh_output = torch.tanh(fc_output)
-        print(f"tanh_output shape: {tanh_output.shape}")
+        logger.debug(f"tanh_output shape: {tanh_output.shape}")
         # tanh_output shape: torch.Size([8192, 20, 128])
 
         # Additional Attention
@@ -82,7 +79,7 @@ class NewsEncoder(nn.Module):
         # 즉 20개의 단어들의 중요도를 scalar 로 표현
         additional_attn_output = tanh_output.matmul(self.additional_attn)
         additional_attn_output = self.dropout(additional_attn_output)
-        print(f"additional_attn_output shape: {additional_attn_output.shape}")
+        logger.debug(f"additional_attn_output shape: {additional_attn_output.shape}")
         # additional_attn_output shape: torch.Size([8192, 20])
 
         # 각 단어의 중요도를 softmax 를 통해 확률로 만듬
@@ -90,26 +87,26 @@ class NewsEncoder(nn.Module):
         softmax_output = F.softmax(additional_attn_output, dim=1)
         softmax_output = softmax_output * mask_for_softmax
 
-        print(f"softmax_output shape: {softmax_output.shape}")
+        logger.debug(f"softmax_output shape: {softmax_output.shape}")
         # softmax_output shape: torch.Size([8192, 20])
 
         # shape 체크.
-        print("softmax_output.unsqueeze(-1) shape:", softmax_output.unsqueeze(-1).shape)
+        logger.debug("softmax_output.unsqueeze(-1) shape:", softmax_output.unsqueeze(-1).shape)
         # softmax_output.unsqueeze(-1) shape: torch.Size([8192, 20, 1])
-        print("attn_output shape:", attn_output.shape)
+        logger.debug("attn_output shape:", attn_output.shape)
         # attn_output shape: torch.Size([8192, 20, 128])
 
         # Aggregate the Output
         # 각단어의 중요도를 attention_output 에 곱해서 각 단어의 중요도에 따라서
         # attention_output 을 조정
         out = torch.sum(softmax_output.unsqueeze(-1) * attn_output, dim=1)
-        print(f"out shape: {out.shape}")
+        logger.debug(f"out shape: {out.shape}")
         # out shape: torch.Size([8192, 128])
         return out
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
+    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.2):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             emb_dim, n_head, batch_first=True, dropout=dropout
@@ -121,55 +118,48 @@ class UserEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        print(f"x shape: {x.shape}")
+        logger.debug(f"x shape: {x.shape}")
         # x shape: torch.Size([128, 64, 128])
 
         # multi head attention 을 이용하여
         # 'news_encoder 출력벡터' 의 attention 벡터로 변환
         attn_output, _ = self.multi_head_attention(x, x, x)
-
-        # residual net (Note: 논문에는 없음)
-        attn_output = self.norm_1(attn_output + x)
-        print(f"attn_output shape: {attn_output.shape}")
-        # attn_output shape: torch.Size([128, 64, 128])
-
-        # without residual net
-        # attn_output = self.norm_1(attn_output)
-        # print(f"attn_output shape: {attn_output.shape}")
+        attn_output = self.norm_1(attn_output)
+        logger.debug(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([128, 64, 128])
 
         # attention vector를 projection 하여 데이터의 특징을 재조정
         fc_output = self.fc(attn_output)
         fc_output = self.norm_2(fc_output)
-        print(f"fc_output shape: {fc_output.shape}")
+        logger.debug(f"fc_output shape: {fc_output.shape}")
         # fc_output shape: torch.Size([128, 64, 128])
 
         # tanh 함수를 사용하여 데이터에 비선형성을 추가합니다.
         tanh_output = torch.tanh(fc_output)
-        print(f"tanh_output shape: {tanh_output.shape}")
+        logger.debug(f"tanh_output shape: {tanh_output.shape}")
         # tanh_output shape: torch.Size([128, 64, 128])
 
         # 각 기사 벡터를 중요도 scalar로 변환 하기 위해 additional_attn 과 닷 프로덕트 연산.
         additional_attn_output = tanh_output.matmul(self.additional_attn)
         additional_attn_output = self.dropout(additional_attn_output)
-        print(f"additional_attn_output shape: {additional_attn_output.shape}")
+        logger.debug(f"additional_attn_output shape: {additional_attn_output.shape}")
         # query_output shape: torch.Size([128, 64])
 
         # 각 기사벡터 중요도를 softmax 를 통해 확률로 변환합니다.
         attn_weight = F.softmax(additional_attn_output, dim=1)
-        print(f"attention_weights shape: {attn_weight.shape}")
+        logger.debug(f"attention_weights shape: {attn_weight.shape}")
         # attention_weights shape: torch.Size([128, 64])
 
         # additional attention 을 attn_output 에 곱하여 attention 에 추가 가중치를 부여합니다.
         weighted_attention = attn_weight.unsqueeze(-1) * attn_output
-        print(f"weighted_attention shape: {weighted_attention.shape}")
+        logger.debug(f"weighted_attention shape: {weighted_attention.shape}")
         # torch.Size([128, 64, 128]) users, articles, embed_dim
         # 128명의 유저들이 각각 64개의 기사를 보았고 각각의 기사 벡터는 128 dim 을 가지고 있음
 
         # user가 본 기사들의 벡터를 모두 더하여 user 벡터를 생성합니다.
         # (users, articles, embed_dim) -> (users, embed_dim)
         out = torch.sum(weighted_attention, dim=1)
-        print(f"out shape: {out.shape}")
+        logger.debug(f"out shape: {out.shape}")
         # torch.Size([128, 128])
         return out
 
@@ -198,10 +188,9 @@ class NRMS(pl.LightningModule):
         titles, labels, mask = batch
         scores = self.forward(titles, mask)
         loss = self.criterion(scores, labels.float())
-        print(f"train_loss: {loss}")
+        self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
     def configure_optimizers(self):
-        parameters = list(self.news_encoder.parameters()) + list(self.user_encoder.parameters())
-        optimizer = optim.Adam(parameters, lr=0.0001, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=0.0001, weight_decay=1e-5)
         return optimizer

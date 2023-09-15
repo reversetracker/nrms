@@ -1,6 +1,9 @@
+import wandb
+
 import pandas as pd
 import pytorch_lightning as pl
 import torch
+from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import datasets.v1
@@ -21,11 +24,14 @@ num_heads = 8  # number of heads
 
 
 def main():
+    wandb_logger = WandbLogger()
+    wandb.init(project="nrms")
+
     dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
     nrms = NRMS(embed_size, num_heads)
-    trainer = pl.Trainer(max_epochs=100, log_every_n_steps=10)
+    trainer = pl.Trainer(max_epochs=100, log_every_n_steps=1, logger=wandb_logger)
     trainer.fit(nrms, dataloader)
 
 
