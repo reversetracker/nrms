@@ -182,6 +182,7 @@ class NRMS(pl.LightningModule):
         self.user_encoder = UserEncoder(embed_size, num_heads)
         self.criterion = nn.BCEWithLogitsLoss()
         self.training_step_outputs = []
+        self.validating_step_outputs = []
         self.testing_step_outputs = []
 
     def forward(self, titles, key_padding_masks, softmax_masks):
@@ -200,22 +201,6 @@ class NRMS(pl.LightningModule):
         scores = torch.bmm(news_output, user_output.unsqueeze(2)).squeeze(2)
         return scores
 
-    def training_step(self, batch, batch_idx):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
-        loss = self.criterion(scores, labels.float())
-        self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
-        self.training_step_outputs.append(loss)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
-        loss = self.criterion(scores, labels.float())
-        self.log("test_loss", loss, prog_bar=True)
-        self.testing_step_outputs.append(loss)
-        return loss
-
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=0.001, weight_decay=1e-4)
         scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
@@ -226,3 +211,44 @@ class NRMS(pl.LightningModule):
                 "monitor": "avg_val_loss",
             },
         }
+
+    def training_step(self, batch, batch_idx):
+        titles, labels, key_padding_masks, softmax_masks = batch
+        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        loss = self.criterion(scores, labels.float())
+        self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
+        self.training_step_outputs.append(loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        titles, labels, key_padding_masks, softmax_masks = batch
+        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        loss = self.criterion(scores, labels.float())
+
+        self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
+        self.validating_step_outputs.append(loss)
+        return {"val_loss": loss}
+
+    def test_step(self, batch, batch_idx):
+        titles, labels, key_padding_masks, softmax_masks = batch
+        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        loss = self.criterion(scores, labels.float())
+
+        self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
+        self.testing_step_outputs.append(loss)
+        return {"test_loss": loss}
+
+    def on_train_epoch_end(self) -> None:
+        avg_loss = torch.stack([x for x in self.training_step_outputs]).mean()
+        self.log("avg_train_loss", avg_loss, prog_bar=True)
+        self.training_step_outputs.clear()
+
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack([x for x in self.validating_step_outputs]).mean()  # 수정된 부분
+        self.log("avg_val_loss", avg_loss, prog_bar=True)
+        self.validating_step_outputs.clear()
+
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack([x for x in self.testing_step_outputs]).mean()
+        self.log("avg_test_loss", avg_loss, prog_bar=True)
+        self.testing_step_outputs.clear()
