@@ -48,18 +48,13 @@ def main():
         monitor="val_loss",
         mode="min",
     )
-    early_stop_callback = EarlyStopping(
-        monitor="avg_val_loss",
-        patience=7,
-        verbose=True,
-    )
 
     # Define trainer and fit model
     trainer = pl.Trainer(
-        max_epochs=50,
+        max_epochs=5,
         log_every_n_steps=5,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, early_stop_callback],
+        callbacks=[checkpoint_callback],
     )
     trainer.fit(nrms, train_loader, val_loader)
 

@@ -208,10 +208,13 @@ class NRMS(pl.LightningModule):
         self.training_step_outputs.append(loss)
         return loss
 
-    def on_validation_epoch_end(self):
-        avg_loss = torch.stack([x["val_loss"] for x in self.training_step_outputs]).mean()
-        self.log("avg_val_loss", avg_loss, prog_bar=True)
-        self.training_step_outputs.clear()  # free memory
+    def test_step(self, batch, batch_idx):
+        titles, labels, key_padding_masks, softmax_masks = batch
+        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        loss = self.criterion(scores, labels.float())
+        self.log("test_loss", loss, prog_bar=True)
+        self.testing_step_outputs.append(loss)
+        return loss
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=0.001, weight_decay=1e-4)
@@ -223,16 +226,3 @@ class NRMS(pl.LightningModule):
                 "monitor": "avg_val_loss",
             },
         }
-
-    def test_step(self, batch, batch_idx):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
-        loss = self.criterion(scores, labels.float())
-        self.log("test_loss", loss, prog_bar=True)
-        self.testing_step_outputs.append(loss)
-        return loss
-
-    def on_test_epoch_end(self):
-        avg_loss = torch.stack([x["test_loss"] for x in self.testing_step_outputs]).mean()
-        self.log("avg_test_loss", avg_loss, prog_bar=True)
-        self.testing_step_outputs.clear()  # free memory
