@@ -1,8 +1,8 @@
 import pandas as pd
 import pytorch_lightning as pl
-from lightning.pytorch.callbacks import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
-from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from torch.utils.data import DataLoader, random_split
 
 import datasets.v1
 import directories
@@ -24,20 +24,40 @@ def main():
 
     dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
+
+    # Split dataset into train and validation sets
+    train_size = int(0.8 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num)
+
     nrms = NRMS(embed_size, num_heads)
+
+    # Define callbacks below
+    checkpoint_callback = ModelCheckpoint(
+        dirpath='checkpoints',
+        filename='{epoch}-{val_loss:.2f}',
+        save_top_k=-1,  # save all epochs
+        verbose=True,
+        monitor='val_loss',
+        mode='min'
+    )
+    early_stop_callback = EarlyStopping(
+        monitor='avg_val_loss',
+        patience=7,
+        verbose=True,
+    )
+
+    # Define trainer and fit model
     trainer = pl.Trainer(
         max_epochs=50,
-        log_every_n_steps=1,
+        log_every_n_steps=5,
         logger=wandb_logger,
-        callbacks=[
-            EarlyStopping(monitor="avg_val_loss", patience=7),
-        ],
+        callbacks=[checkpoint_callback, early_stop_callback],
     )
-    trainer.fit(nrms, dataloader)
-
-    checkpoint_path = "nrms_model.ckpt"
-    trainer.save_checkpoint(checkpoint_path)
+    trainer.fit(nrms, train_loader, val_loader)
 
 
 if __name__ == "__main__":
