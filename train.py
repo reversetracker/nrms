@@ -26,7 +26,7 @@ def main():
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
     # Split dataset into train and validation sets
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.99 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
