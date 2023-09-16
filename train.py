@@ -34,6 +34,9 @@ def main():
     trainer = pl.Trainer(max_epochs=50, log_every_n_steps=1, logger=wandb_logger)
     trainer.fit(nrms, dataloader)
 
+    checkpoint_path = "nrms_model.ckpt"
+    trainer.save_checkpoint(checkpoint_path)
+
 
 if __name__ == "__main__":
     main()
