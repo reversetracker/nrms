@@ -39,7 +39,7 @@ print(f"softmax_masks_reshaped shape: {softmax_masks_reshaped.shape}")
 news_encoder = models.v1.NewsEncoder(embed_size, num_heads)
 user_encoder = models.v1.UserEncoder(embed_size, num_heads)
 
-news_output = news_encoder(
+news_output, _, _ = news_encoder(
     dataset_reshaped,
     key_padding_masks=key_padding_masks_reshaped,
     softmax_masks=softmax_masks_reshaped,

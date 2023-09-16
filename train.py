@@ -30,22 +30,26 @@ def main():
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num)
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
+    )
 
     nrms = NRMS(embed_size, num_heads)
 
     # Define callbacks below
     checkpoint_callback = ModelCheckpoint(
-        dirpath='checkpoints',
-        filename='{epoch}-{val_loss:.2f}',
+        dirpath="checkpoints",
+        filename="{epoch}-{val_loss:.2f}",
         save_top_k=-1,  # save all epochs
         verbose=True,
-        monitor='val_loss',
-        mode='min'
+        monitor="val_loss",
+        mode="min",
     )
     early_stop_callback = EarlyStopping(
-        monitor='avg_val_loss',
+        monitor="avg_val_loss",
         patience=7,
         verbose=True,
     )

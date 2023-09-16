@@ -55,7 +55,7 @@ class NewsEncoder(nn.Module):
         x: torch.Tensor,
         key_padding_masks: torch.Tensor = None,
         softmax_masks: torch.Tensor = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         logger.debug(f"x shape: {x.shape}")
         # x shape: torch.Size([users * articles, article title word size, word embedding size])
         # x shape: torch.Size([8192, 20, 128])
@@ -65,7 +65,9 @@ class NewsEncoder(nn.Module):
         # softmax_masks.shape: ([users * articles, 1])
         assert softmax_masks.shape == (x.shape[0], 1)
 
-        attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_masks)
+        attn_output, attn_output_weights = self.multi_head_attention(
+            x, x, x, key_padding_mask=key_padding_masks
+        )
         attn_output = self.norm_1(attn_output)
         logger.debug(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([8192, 20, 128])
@@ -111,7 +113,7 @@ class NewsEncoder(nn.Module):
         out = torch.sum(softmax_output.unsqueeze(-1) * attn_output, dim=1)
         logger.debug(f"out shape: {out.shape}")
         # out shape: torch.Size([8192, 128])
-        return out
+        return out, attn_output_weights, softmax_output
 
 
 class UserEncoder(nn.Module):
@@ -189,7 +191,7 @@ class NRMS(pl.LightningModule):
         reshaped_key_padding_masks = key_padding_masks.view(users * articles, seq_length)
         reshaped_softmax_masks = softmax_masks.view(users * articles, 1)
 
-        news_output = self.news_encoder(
+        news_output, _, __ = self.news_encoder(
             reshaped_titles, reshaped_key_padding_masks, reshaped_softmax_masks
         )
         news_output = news_output.view(users, articles, embed_size)
