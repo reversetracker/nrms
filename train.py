@@ -1,20 +1,15 @@
-import wandb
-
 import pandas as pd
 import pytorch_lightning as pl
-import torch
+from lightning.pytorch.callbacks import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
 import datasets.v1
 import directories
+import wandb
 from models.v1 import NRMS
 
 parallel_num = 4
-
-torch.set_num_threads(parallel_num)
-torch.set_num_interop_threads(parallel_num)
-torch.autograd.set_detect_anomaly(True)
 
 batch_size = 64  # users
 articles = 64  # articles
@@ -31,7 +26,14 @@ def main():
     dataset = datasets.v1.OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num)
     nrms = NRMS(embed_size, num_heads)
-    trainer = pl.Trainer(max_epochs=50, log_every_n_steps=1, logger=wandb_logger)
+    trainer = pl.Trainer(
+        max_epochs=50,
+        log_every_n_steps=1,
+        logger=wandb_logger,
+        callbacks=[
+            EarlyStopping(monitor="avg_val_loss", patience=7),
+        ],
+    )
     trainer.fit(nrms, dataloader)
 
     checkpoint_path = "nrms_model.ckpt"

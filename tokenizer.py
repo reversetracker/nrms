@@ -38,10 +38,12 @@ def texts_to_embeddings(
             masks_cache[text] = mask
         return texts_to_embeddings(texts, max_length)
 
-    embeddings = [embeddings_cache[text] for text in texts]
-    masks = [masks_cache[text] for text in texts]
+    text_embeddings = torch.stack([embeddings_cache[text] for text in texts])
+    mask_embeddings = torch.stack([masks_cache[text] for text in texts])
+    mask_embeddings = mask_embeddings.bool()
+    mask_embeddings = ~mask_embeddings
 
-    return torch.stack(embeddings), torch.stack(masks)
+    return text_embeddings, mask_embeddings
 
 
 if __name__ == "__main__":

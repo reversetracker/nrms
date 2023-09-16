@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch import optim
 
 import pytorch_lightning as pl
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +50,22 @@ class NewsEncoder(nn.Module):
         self.norm_2 = nn.LayerNorm(emb_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor = None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding_masks: torch.Tensor = None,
+        softmax_masks: torch.Tensor = None,
+    ):
         logger.debug(f"x shape: {x.shape}")
         # x shape: torch.Size([users * articles, article title word size, word embedding size])
         # x shape: torch.Size([8192, 20, 128])
 
-        all_true_rows = key_padding_mask.all(dim=1)
-        key_padding_mask[all_true_rows] = False
-        attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_mask)
+        # key_padding_masks.shape: ([users * articles, seq_length])
+        assert key_padding_masks.shape == (x.shape[0], x.shape[1])
+        # softmax_masks.shape: ([users * articles, 1])
+        assert softmax_masks.shape == (x.shape[0], 1)
+
+        attn_output, _ = self.multi_head_attention(x, x, x, key_padding_mask=key_padding_masks)
         attn_output = self.norm_1(attn_output)
         logger.debug(f"attn_output shape: {attn_output.shape}")
         # attn_output shape: torch.Size([8192, 20, 128])
@@ -83,9 +92,9 @@ class NewsEncoder(nn.Module):
         # additional_attn_output shape: torch.Size([8192, 20])
 
         # 각 단어의 중요도를 softmax 를 통해 확률로 만듬
-        mask_for_softmax = (~all_true_rows).float().unsqueeze(-1)
         softmax_output = F.softmax(additional_attn_output, dim=1)
-        softmax_output = softmax_output * mask_for_softmax
+        if softmax_masks is not None:
+            softmax_output = softmax_output * softmax_masks
 
         logger.debug(f"softmax_output shape: {softmax_output.shape}")
         # softmax_output shape: torch.Size([8192, 20])
@@ -171,13 +180,16 @@ class NRMS(pl.LightningModule):
         self.user_encoder = UserEncoder(embed_size, num_heads)
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, titles, masks):
+    def forward(self, titles, key_padding_masks, softmax_masks):
         users, articles, seq_length, embed_size = titles.shape
 
         reshaped_titles = titles.view(users * articles, seq_length, embed_size)
-        reshaped_masks = masks.view(users * articles, seq_length)
+        reshaped_key_padding_masks = key_padding_masks.view(users * articles, seq_length)
+        reshaped_softmax_masks = softmax_masks.view(users * articles, 1)
 
-        news_output = self.news_encoder(reshaped_titles, reshaped_masks)
+        news_output = self.news_encoder(
+            reshaped_titles, reshaped_key_padding_masks, reshaped_softmax_masks
+        )
         news_output = news_output.view(users, articles, embed_size)
         user_output = self.user_encoder(news_output)
 
@@ -185,12 +197,23 @@ class NRMS(pl.LightningModule):
         return scores
 
     def training_step(self, batch, batch_idx):
-        titles, labels, mask = batch
-        scores = self.forward(titles, mask)
+        titles, labels, key_padding_masks, softmax_masks = batch
+        scores = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         return loss
 
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+        self.log("avg_val_loss", avg_loss, prog_bar=True)
+
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=0.0001, weight_decay=1e-5)
-        return optimizer
+        optimizer = optim.Adam(self.parameters(), lr=0.001, weight_decay=1e-4)
+        scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "avg_val_loss",
+            },
+        }

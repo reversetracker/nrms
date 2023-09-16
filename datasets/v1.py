@@ -33,32 +33,41 @@ class OheadlineDataset(Dataset):
         title_list = user_data["article_title"].values.tolist()[: self.max_articles]
         has_viewed_list = user_data["has_viewed"].values.tolist()[: self.max_articles]
 
-        title_embeddings, masks = tokenizer.texts_to_embeddings(title_list)
+        assert len(title_list) == len(has_viewed_list)
 
-        titles_tensor = torch.zeros(
+        title_embeddings, mask_embeddings = tokenizer.texts_to_embeddings(title_list)
+        has_viewed_embeddings = torch.tensor(has_viewed_list)
+
+        titles_batch = torch.zeros(
             (self.max_articles, self.sequence_size, self.embedding_dim), dtype=torch.float
         )
-        has_viewed_tensor = torch.zeros(self.max_articles, dtype=torch.long)
-        masks_tensor = torch.ones((self.max_articles, self.sequence_size), dtype=torch.bool)
+        has_viewed_batch = torch.zeros(self.max_articles, dtype=torch.long)
+        key_padding_masks_batch = torch.zeros(
+            (self.max_articles, self.sequence_size), dtype=torch.bool
+        )
+        softmax_masks_batch = torch.ones((self.max_articles, 1))
 
-        titles_tensor[: len(title_list)] = title_embeddings
-        has_viewed_tensor[: len(has_viewed_list)] = torch.tensor(has_viewed_list)
-        masks_tensor[: len(title_list)] = masks
+        titles_batch[: len(title_list)] = title_embeddings
+        has_viewed_batch[: len(has_viewed_list)] = has_viewed_embeddings
+        key_padding_masks_batch[: len(title_list)] = mask_embeddings
+        softmax_masks_batch[len(has_viewed_list) :] = 0
 
         # torch.Size([64, 20, 768])
         # torch.Size([64])
         # torch.Size([64, 20])
-        return titles_tensor, has_viewed_tensor, masks_tensor
+        # torch.Size([64, 1])
+        return titles_batch, has_viewed_batch, key_padding_masks_batch, softmax_masks_batch
 
 
 if __name__ == "__main__":
     dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-    for titles, labels, masks in dataloader:
+    for titles, labels, key_padding_mask, softmax_mask in dataloader:
         print(titles.shape)
         # torch.Size([64, 64, 20, 128])
         print(labels.shape)
         # torch.Size([64, 64])
-        print(masks.shape)
+        print(key_padding_mask.shape)
         # torch.Size([64, 64, 20])
+        print(softmax_mask.shape)
