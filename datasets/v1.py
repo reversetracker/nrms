@@ -52,10 +52,6 @@ class OheadlineDataset(Dataset):
         key_padding_masks_batch[: len(title_list)] = mask_embeddings
         softmax_masks_batch[len(has_viewed_list) :] = 0
 
-        # torch.Size([64, 20, 768])
-        # torch.Size([64])
-        # torch.Size([64, 20])
-        # torch.Size([64, 1])
         return titles_batch, has_viewed_batch, key_padding_masks_batch, softmax_masks_batch
 
 

@@ -1,11 +1,13 @@
 import logging
 
+import pytorch_lightning as pl
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import wandb
+from matplotlib import pyplot as plt
 from torch import optim
-
-import pytorch_lightning as pl
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 logger = logging.getLogger(__name__)
@@ -143,14 +145,14 @@ class NRMS(pl.LightningModule):
         reshaped_key_padding_masks = key_padding_masks.view(users * articles, seq_length)
         reshaped_softmax_masks = softmax_masks.view(users * articles, 1)
 
-        news_output, _, __ = self.news_encoder(
+        news_output, attn_weights, additive_attn_weights = self.news_encoder(
             reshaped_titles, reshaped_key_padding_masks, reshaped_softmax_masks
         )
         news_output = news_output.view(users, articles, embed_size)
         user_output = self.user_encoder(news_output)
 
         scores = torch.bmm(news_output, user_output.unsqueeze(2)).squeeze(2)
-        return scores
+        return scores, attn_weights, additive_attn_weights
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=0.0001, weight_decay=1e-5)
@@ -165,7 +167,7 @@ class NRMS(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        scores, _, __ = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
@@ -173,8 +175,20 @@ class NRMS(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        scores, attn_weights, __ = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        specific_attn_weights = attn_weights[0]
+        sns.heatmap(specific_attn_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
+        ax.set_title("Attention Weights")
+        wandb.log(
+            {
+                "attention_weights": [
+                    wandb.Image(fig, caption=f"Attention Weights Batch-{batch_idx}")
+                ]
+            }
+        )
 
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
@@ -182,7 +196,7 @@ class NRMS(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         titles, labels, key_padding_masks, softmax_masks = batch
-        scores = self.forward(titles, key_padding_masks, softmax_masks)
+        scores, _, __ = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
 
         self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
@@ -194,12 +208,12 @@ class NRMS(pl.LightningModule):
         self.log("avg_train_loss", avg_loss, prog_bar=True)
         self.training_step_outputs.clear()
 
-    def on_validation_epoch_end(self):
+    def on_validation_epoch_end(self) -> None:
         avg_loss = torch.stack([x for x in self.validating_step_outputs]).mean()  # 수정된 부분
         self.log("avg_val_loss", avg_loss, prog_bar=True)
         self.validating_step_outputs.clear()
 
-    def on_test_epoch_end(self):
+    def on_test_epoch_end(self) -> None:
         avg_loss = torch.stack([x for x in self.testing_step_outputs]).mean()
         self.log("avg_test_loss", avg_loss, prog_bar=True)
         self.testing_step_outputs.clear()
