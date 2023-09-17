@@ -25,16 +25,19 @@ def main():
     dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
-    # Split dataset into train and validation sets
-    train_size = int(0.99 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    train_size = int(0.90 * len(dataset))
+    val_size = int(0.05 * len(dataset))
+    test_size = len(dataset) - train_size - val_size
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num
     )
     val_loader = DataLoader(
         val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
     )
 
     nrms = NRMS(embed_size, num_heads)
@@ -57,6 +60,7 @@ def main():
         callbacks=[checkpoint_callback],
     )
     trainer.fit(nrms, train_loader, val_loader)
+    trainer.test(nrms, test_loader)
 
 
 if __name__ == "__main__":
