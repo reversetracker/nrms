@@ -31,10 +31,10 @@ def main():
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
     )
 
     nrms = NRMS(embed_size, num_heads)
