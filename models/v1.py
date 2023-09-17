@@ -177,7 +177,10 @@ class NRMS(pl.LightningModule):
         titles, labels, key_padding_masks, softmax_masks = batch
         scores, attn_weights, __ = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
+        self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
+        self.validating_step_outputs.append(loss)
 
+        # attention visualization logging here..
         fig, ax = plt.subplots(figsize=(10, 10))
         specific_attn_weights = attn_weights[0]
         sns.heatmap(specific_attn_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
@@ -189,9 +192,8 @@ class NRMS(pl.LightningModule):
                 ]
             }
         )
+        plt.close(fig)
 
-        self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
-        self.validating_step_outputs.append(loss)
         return {"val_loss": loss}
 
     def test_step(self, batch, batch_idx):
