@@ -65,7 +65,6 @@ class NewsEncoder(nn.Module):
 
         self.linear = nn.Linear(input_dim, output_dim)
         self.tanh = nn.Tanh()
-        self.norm_1 = nn.LayerNorm(input_dim)
 
     def forward(
         self,
@@ -82,7 +81,6 @@ class NewsEncoder(nn.Module):
         context, context_weights = self.multi_head_attention(
             x, x, x, key_padding_mask=key_padding_masks
         )
-        context = self.norm_1(context)
         logger.debug(f"context shape: {context.shape}")
 
         # Fully connected layer
@@ -110,14 +108,12 @@ class UserEncoder(nn.Module):
 
         self.linear = nn.Linear(input_dim, input_dim)
         self.tanh = nn.Tanh()
-        self.norm_1 = nn.LayerNorm(input_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         logger.debug(f"x shape: {x.shape}")
 
         # Multi-head attention
         context, _ = self.multi_head_attention(x, x, x)
-        context = self.norm_1(context)
         logger.debug(f"context shape: {context.shape}")
 
         # Fully connected layer
