@@ -90,10 +90,6 @@ class NewsEncoder(nn.Module):
         context = self.norm_1(context)
         logger.debug(f"context shape: {context.shape}")
 
-        # Note:
-        # context * additive_weights 보다
-        # projected_context * additive_weights 일 때 성능이 비약적 향상
-        # 논문 에는 projection 없이 context * additive_weights 로 했음
         # Fully connected layer
         transformed_context = self.linear(context)
         transformed_context = self.norm_2(transformed_context)
