@@ -134,10 +134,10 @@ class UserEncoder(nn.Module):
         logger.debug(f"transformed_context shape: {transformed_context.shape}")
 
         # Additive attention
-        attn_weights = self.additive_attention(context)
+        additive_weights = self.additive_attention(context)
 
         # Weighted context by the attention weights
-        out = torch.sum(attn_weights.unsqueeze(-1) * transformed_context, dim=1)
+        out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
         logger.debug(f"out shape: {out.shape}")
 
         return out
