@@ -42,7 +42,7 @@ class AdditiveAttention(nn.Module):
 
     def __init__(self, input_dim: int = 768, output_dim: int = 128, dropout: float = 0.15):
         super(AdditiveAttention, self).__init__()
-        self.proj = nn.Linear(input_dim, output_dim, bias=True)
+        self.linear = nn.Linear(input_dim, output_dim, bias=True)
         self.query = nn.Parameter(torch.randn(output_dim))
         self.norm = nn.LayerNorm(output_dim)
         self.tanh = nn.Tanh()
@@ -50,7 +50,7 @@ class AdditiveAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor):
-        x_proj = self.proj(x)
+        x_proj = self.linear(x)
         x_proj = self.norm(x_proj)
         x_proj = self.tanh(x_proj)
         attn_scores = torch.matmul(x_proj, self.query)
@@ -98,6 +98,7 @@ class NewsEncoder(nn.Module):
 
         # Additive attention
         additive_weights = self.additive_attention(context)
+        additive_weights = additive_weights * softmax_masks
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
