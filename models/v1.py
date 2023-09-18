@@ -38,7 +38,7 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.2):
+    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             emb_dim, n_head, batch_first=True, dropout=dropout
@@ -131,12 +131,16 @@ class UserEncoder(nn.Module):
 class NRMS(pl.LightningModule):
     def __init__(self, embed_size, num_heads):
         super(NRMS, self).__init__()
+
         self.news_encoder = NewsEncoder(embed_size, num_heads)
         self.user_encoder = UserEncoder(embed_size, num_heads)
         self.criterion = nn.BCEWithLogitsLoss()
+
         self.training_step_outputs = []
         self.validating_step_outputs = []
         self.testing_step_outputs = []
+
+        self.save_hyperparameters()
 
     def forward(self, titles, key_padding_masks, softmax_masks):
         users, articles, seq_length, embed_size = titles.shape
@@ -175,7 +179,7 @@ class NRMS(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         titles, labels, key_padding_masks, softmax_masks = batch
-        scores, attn_weights, __ = self.forward(titles, key_padding_masks, softmax_masks)
+        scores, attn_weights, additive_softmax = self.forward(titles, key_padding_masks, softmax_masks)
         loss = self.criterion(scores, labels.float())
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
@@ -189,6 +193,19 @@ class NRMS(pl.LightningModule):
             {
                 "attention_weights": [
                     wandb.Image(fig, caption=f"Attention Weights Batch-{batch_idx}")
+                ]
+            }
+        )
+        plt.close(fig)
+
+        # additive softmax_results visualization logging
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.heatmap(additive_softmax.cpu().detach().numpy(), ax=ax, cmap="viridis")
+        ax.set_title("Additive Weights")
+        wandb.log(
+            {
+                "additive_softmax": [
+                    wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")
                 ]
             }
         )

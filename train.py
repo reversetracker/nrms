@@ -61,6 +61,7 @@ def main():
     )
     trainer.fit(nrms, train_loader, val_loader)
     trainer.test(nrms, test_loader)
+    wandb.finish()
 
 
 if __name__ == "__main__":
