@@ -40,21 +40,17 @@ class MultiHeadSelfAttention(nn.Module):
 class AdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
-    def __init__(self, input_dim: int = 768, output_dim: int = 128, dropout: float = 0.15):
+    def __init__(self, input_dim: int = 768, output_dim: int = 128):
         super(AdditiveAttention, self).__init__()
         self.linear = nn.Linear(input_dim, output_dim, bias=True)
         self.query = nn.Parameter(torch.randn(output_dim))
-        self.norm = nn.LayerNorm(output_dim)
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
-        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor):
         x_proj = self.linear(x)
-        x_proj = self.norm(x_proj)
         x_proj = self.tanh(x_proj)
         attn_scores = torch.matmul(x_proj, self.query)
-        attn_scores = self.dropout(attn_scores)
         attn_probs = self.softmax(attn_scores)
         return attn_probs
 
@@ -65,12 +61,11 @@ class NewsEncoder(nn.Module):
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, n_head, batch_first=True, dropout=dropout
         )
-        self.additive_attention = AdditiveAttention(input_dim, output_dim, dropout)
+        self.additive_attention = AdditiveAttention(input_dim, output_dim)
 
         self.linear = nn.Linear(input_dim, output_dim)
         self.tanh = nn.Tanh()
         self.norm_1 = nn.LayerNorm(input_dim)
-        self.norm_2 = nn.LayerNorm(output_dim)
 
     def forward(
         self,
@@ -92,7 +87,6 @@ class NewsEncoder(nn.Module):
 
         # Fully connected layer
         transformed_context = self.linear(context)
-        transformed_context = self.norm_2(transformed_context)
         transformed_context = self.tanh(transformed_context)
         logger.debug(f"transformed_context shape: {transformed_context.shape}")
 
@@ -112,12 +106,11 @@ class UserEncoder(nn.Module):
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, n_head, batch_first=True, dropout=dropout
         )
-        self.additive_attention = AdditiveAttention(input_dim, input_dim, dropout)
+        self.additive_attention = AdditiveAttention(input_dim, input_dim)
 
         self.linear = nn.Linear(input_dim, input_dim)
         self.tanh = nn.Tanh()
         self.norm_1 = nn.LayerNorm(input_dim)
-        self.norm_2 = nn.LayerNorm(input_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         logger.debug(f"x shape: {x.shape}")
@@ -129,7 +122,6 @@ class UserEncoder(nn.Module):
 
         # Fully connected layer
         transformed_context = self.linear(context)
-        transformed_context = self.norm_2(transformed_context)
         transformed_context = self.tanh(transformed_context)
         logger.debug(f"transformed_context shape: {transformed_context.shape}")
 

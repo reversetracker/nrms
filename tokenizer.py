@@ -6,9 +6,9 @@ TOKENIZER = ElectraTokenizer.from_pretrained("monologg/koelectra-base-v3-discrim
 
 MODEL = ElectraModel.from_pretrained("monologg/koelectra-base-v3-discriminator")
 
-embeddings_cache = cachetools.LRUCache(maxsize=50000)
+embeddings_cache = cachetools.LRUCache(maxsize=300000)
 
-masks_cache = cachetools.LRUCache(maxsize=50000)
+masks_cache = cachetools.LRUCache(maxsize=300000)
 
 
 def complement(keys: list[str], cache: cachetools.LRUCache) -> list[str]:
