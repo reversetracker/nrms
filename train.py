@@ -9,7 +9,7 @@ import directories
 import wandb
 from models.v1 import NRMS
 
-parallel_num = 4
+parallel_num = 8
 
 batch_size = 64  # users
 articles = 64  # articles
@@ -28,7 +28,9 @@ def main():
     train_size = int(0.90 * len(dataset))
     val_size = int(0.05 * len(dataset))
     test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    train_dataset, val_dataset, test_dataset = random_split(
+        dataset, [train_size, val_size, test_size]
+    )
 
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num

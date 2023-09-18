@@ -37,17 +37,40 @@ class MultiHeadSelfAttention(nn.Module):
         return context
 
 
+class AdditiveAttention(nn.Module):
+    """Additive Attention learns the importance of each word in the sequence."""
+
+    def __init__(self, input_dim: int = 768, output_dim: int = 128, dropout: float = 0.15):
+        super(AdditiveAttention, self).__init__()
+        self.proj = nn.Linear(input_dim, output_dim, bias=True)
+        self.query = nn.Parameter(torch.randn(output_dim))
+        self.norm = nn.LayerNorm(output_dim)
+        self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax(dim=1)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor):
+        x_proj = self.proj(x)
+        x_proj = self.norm(x_proj)
+        x_proj = self.tanh(x_proj)
+        attn_scores = torch.matmul(x_proj, self.query)
+        attn_scores = self.dropout(attn_scores)
+        attn_probs = self.softmax(attn_scores)
+        return attn_probs
+
+
 class NewsEncoder(nn.Module):
-    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.1):
+    def __init__(self, input_dim: int, output_dim: int, n_head: int, dropout: float = 0.1):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            emb_dim, n_head, batch_first=True, dropout=dropout
+            input_dim, n_head, batch_first=True, dropout=dropout
         )
-        self.fc = nn.Linear(emb_dim, emb_dim)
-        self.additional_attn = nn.Parameter(torch.randn(emb_dim))
-        self.norm_1 = nn.LayerNorm(emb_dim)
-        self.norm_2 = nn.LayerNorm(emb_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.additive_attention = AdditiveAttention(input_dim, output_dim, dropout)
+
+        self.linear = nn.Linear(input_dim, output_dim)
+        self.tanh = nn.Tanh()
+        self.norm_1 = nn.LayerNorm(input_dim)
+        self.norm_2 = nn.LayerNorm(output_dim)
 
     def forward(
         self,
@@ -60,80 +83,79 @@ class NewsEncoder(nn.Module):
         assert key_padding_masks.shape == (x.shape[0], x.shape[1])
         assert softmax_masks.shape == (x.shape[0], 1)
 
-        attn_output, attn_output_weights = self.multi_head_attention(
+        # Multi-head attention
+        context, context_weights = self.multi_head_attention(
             x, x, x, key_padding_mask=key_padding_masks
         )
-        attn_output = self.norm_1(attn_output)
-        logger.debug(f"attn_output shape: {attn_output.shape}")
+        context = self.norm_1(context)
+        logger.debug(f"context shape: {context.shape}")
 
-        fc_output = self.fc(attn_output)
-        fc_output = self.norm_2(fc_output)
-        logger.debug(f"fc_output shape: {fc_output.shape}")
+        # Note:
+        # context * additive_weights 보다
+        # projected_context * additive_weights 일 때 성능이 비약적 향상
+        # 논문 에는 projection 없이 context * additive_weights 로 했음
+        # Fully connected layer
+        transformed_context = self.linear(context)
+        transformed_context = self.norm_2(transformed_context)
+        transformed_context = self.tanh(transformed_context)
+        logger.debug(f"transformed_context shape: {transformed_context.shape}")
 
-        tanh_output = torch.tanh(fc_output)
-        logger.debug(f"tanh_output shape: {tanh_output.shape}")
+        # Additive attention
+        additive_weights = self.additive_attention(context)
 
-        additional_attn_output = tanh_output.matmul(self.additional_attn)
-        additional_attn_output = self.dropout(additional_attn_output)
-        logger.debug(f"additional_attn_output shape: {additional_attn_output.shape}")
-
-        softmax_output = F.softmax(additional_attn_output, dim=1)
-        if softmax_masks is not None:
-            softmax_output = softmax_output * softmax_masks
-        logger.debug(f"softmax_output shape: {softmax_output.shape}")
-
-        out = torch.sum(softmax_output.unsqueeze(-1) * attn_output, dim=1)
+        # Weighted context by the attention weights
+        out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
         logger.debug(f"out shape: {out.shape}")
-        return out, attn_output_weights, softmax_output
+        return out, context_weights, additive_weights
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, emb_dim: int, n_head: int, dropout: float = 0.2):
+    def __init__(self, input_dim: int, n_head: int, dropout: float = 0.2):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            emb_dim, n_head, batch_first=True, dropout=dropout
+            input_dim, n_head, batch_first=True, dropout=dropout
         )
-        self.fc = nn.Linear(emb_dim, emb_dim)
-        self.additional_attn = nn.Parameter(torch.randn(emb_dim))
-        self.norm_1 = nn.LayerNorm(emb_dim)
-        self.norm_2 = nn.LayerNorm(emb_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.additive_attention = AdditiveAttention(input_dim, input_dim, dropout)
 
-    def forward(self, x):
+        self.linear = nn.Linear(input_dim, input_dim)
+        self.tanh = nn.Tanh()
+        self.norm_1 = nn.LayerNorm(input_dim)
+        self.norm_2 = nn.LayerNorm(input_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         logger.debug(f"x shape: {x.shape}")
 
-        attn_output, _ = self.multi_head_attention(x, x, x)
-        attn_output = self.norm_1(attn_output)
-        logger.debug(f"attn_output shape: {attn_output.shape}")
+        # Multi-head attention
+        context, _ = self.multi_head_attention(x, x, x)
+        context = self.norm_1(context)
+        logger.debug(f"context shape: {context.shape}")
 
-        fc_output = self.fc(attn_output)
-        fc_output = self.norm_2(fc_output)
-        logger.debug(f"fc_output shape: {fc_output.shape}")
+        # Fully connected layer
+        transformed_context = self.linear(context)
+        transformed_context = self.norm_2(transformed_context)
+        transformed_context = self.tanh(transformed_context)
+        logger.debug(f"transformed_context shape: {transformed_context.shape}")
 
-        tanh_output = torch.tanh(fc_output)
-        logger.debug(f"tanh_output shape: {tanh_output.shape}")
+        # Additive attention
+        attn_weights = self.additive_attention(context)
 
-        additional_attn_output = tanh_output.matmul(self.additional_attn)
-        additional_attn_output = self.dropout(additional_attn_output)
-        logger.debug(f"additional_attn_output shape: {additional_attn_output.shape}")
-
-        attn_weight = F.softmax(additional_attn_output, dim=1)
-        logger.debug(f"attention_weights shape: {attn_weight.shape}")
-
-        weighted_attention = attn_weight.unsqueeze(-1) * attn_output
-        logger.debug(f"weighted_attention shape: {weighted_attention.shape}")
-
-        out = torch.sum(weighted_attention, dim=1)
+        # Weighted context by the attention weights
+        out = torch.sum(attn_weights.unsqueeze(-1) * transformed_context, dim=1)
         logger.debug(f"out shape: {out.shape}")
+
         return out
 
 
 class NRMS(pl.LightningModule):
-    def __init__(self, embed_size, num_heads):
+    def __init__(self, input_dim: int = 768, output_dim: int = 128, num_heads: int = 8):
         super(NRMS, self).__init__()
 
-        self.news_encoder = NewsEncoder(embed_size, num_heads)
-        self.user_encoder = UserEncoder(embed_size, num_heads)
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.num_heads = num_heads
+
+        self.news_encoder = NewsEncoder(input_dim, output_dim, num_heads)
+        self.user_encoder = UserEncoder(output_dim, num_heads)
         self.criterion = nn.BCEWithLogitsLoss()
 
         self.training_step_outputs = []
@@ -152,7 +174,7 @@ class NRMS(pl.LightningModule):
         news_output, attn_weights, additive_attn_weights = self.news_encoder(
             reshaped_titles, reshaped_key_padding_masks, reshaped_softmax_masks
         )
-        news_output = news_output.view(users, articles, embed_size)
+        news_output = news_output.view(users, articles, self.output_dim)
         user_output = self.user_encoder(news_output)
 
         scores = torch.bmm(news_output, user_output.unsqueeze(2)).squeeze(2)
@@ -179,7 +201,9 @@ class NRMS(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         titles, labels, key_padding_masks, softmax_masks = batch
-        scores, attn_weights, additive_softmax = self.forward(titles, key_padding_masks, softmax_masks)
+        scores, attn_weights, additive_softmax = self.forward(
+            titles, key_padding_masks, softmax_masks
+        )
         loss = self.criterion(scores, labels.float())
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
@@ -203,11 +227,7 @@ class NRMS(pl.LightningModule):
         sns.heatmap(additive_softmax.cpu().detach().numpy(), ax=ax, cmap="viridis")
         ax.set_title("Additive Weights")
         wandb.log(
-            {
-                "additive_softmax": [
-                    wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")
-                ]
-            }
+            {"additive_softmax": [wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")]}
         )
         plt.close(fig)
 
