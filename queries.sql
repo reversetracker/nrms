@@ -1,117 +1,116 @@
-SELECT * FROM `oheadline.analytics_server_prod.viewListArticle` WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY) = TIMESTAMP("2023-08-31") LIMIT 1000;
-
-
-WITH PositiveSamples AS (
-  SELECT
-    user_property.user_id as user_id,
-    data.article_id as article_id,
-    TRUE as has_viewed,
-    data.determined_at as time
-  FROM
-    `oheadline.analytics_server_prod.viewDetailArticle`
-  WHERE
-    TIMESTAMP_TRUNC(_PARTITIONTIME, DAY) = TIMESTAMP("2023-08-31")
+WITH InitialPositiveSamples AS (
+    SELECT
+        user_property.user_id as user_id,
+        data.article_id as article_id,
+        data.watch_time as watch_time,
+        true as has_viewed,
+        data.determined_at as determined_at,
+        ROW_NUMBER() OVER(PARTITION BY user_property.user_id, data.article_id ORDER BY data.determined_at DESC) as row_num_1
+    FROM `oheadline.analytics_server_prod.viewDetailArticle`
+    WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY)
+    BETWEEN TIMESTAMP("2023-06-20") AND TIMESTAMP("2023-09-20")
+),
+UniquePositiveSamples AS (
+    SELECT
+        *,
+        ROW_NUMBER() over (PARTITION BY user_id ORDER BY determined_at DESC) as row_num_2
+    FROM InitialPositiveSamples
+    WHERE row_num_1 = 1
+),
+UserArticleCounts AS (
+    SELECT
+        user_id,
+        COUNT(article_id) as article_count
+    FROM UniquePositiveSamples
+    GROUP BY user_id
+),
+PositiveSamples AS (
+    SELECT
+        u.*
+    FROM UniquePositiveSamples u
+    JOIN UserArticleCounts c
+    ON u.user_id = c.user_id
+    WHERE row_num_2 <= 32
+    AND c.article_count > 2
+),
+InitialNegativeSamples AS (
+    SELECT
+        user_property.user_id as user_id,
+        data.article_id as article_id,
+        0 as watch_time,
+        false as has_viewed,
+        data.determined_at as determined_at,
+        ROW_NUMBER() OVER(PARTITION BY user_property.user_id, data.article_id ORDER BY data.determined_at DESC) as row_num_3
+    FROM `oheadline.analytics_server_prod.viewListArticle`
+    WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY)
+    BETWEEN TIMESTAMP("2023-06-20") AND TIMESTAMP("2023-09-20")
+),
+UniqueNegativeSamples AS (
+    SELECT
+      *
+    FROM InitialNegativeSamples
+    WHERE row_num_3 = 1
+),
+FilteredNegativeSamples AS (
+    -- Remove negative samples that are also positive samples using left join
+    SELECT
+        ns.user_id as user_id,
+        ns.article_id as article_id,
+        ns.watch_time as watch_time,
+        ns.has_viewed as has_viewed,
+        ns.determined_at as determined_at,
+        ROW_NUMBER() OVER(PARTITION BY ns.user_id ORDER BY ns.determined_at DESC) as row_num_4
+    FROM UniqueNegativeSamples ns
+    LEFT JOIN PositiveSamples ps
+    ON ns.article_id = ps.article_id
+    AND ns.user_id = ps.user_id
+    WHERE ps.article_id IS NULL
 ),
 NegativeSamples AS (
-  SELECT
-    user_property.user_id as user_id,
-    data.article_id as article_id,
-    FALSE as has_viewed,
-    data.determined_at as time
-  FROM
-    `oheadline.analytics_server_prod.viewListArticle`
-  WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY) = TIMESTAMP("2023-08-31")
-  AND data.article_id NOT IN (SELECT article_id FROM PositiveSamples WHERE user_id = PositiveSamples.user_id)
+    SELECT
+        user_id,
+        article_id,
+        watch_time,
+        has_viewed,
+        determined_at,
+        row_num_4
+    FROM FilteredNegativeSamples
+    WHERE row_num_4 <= 32
 ),
-CombinedSamples AS (
-  SELECT * FROM PositiveSamples
-  UNION ALL
-  SELECT * FROM NegativeSamples
-),
-RankedSamples AS (
-  SELECT
-    *,
-    ROW_NUMBER() OVER (PARTITION BY user_id, has_viewed ORDER BY time DESC) as rank
-  FROM
-    CombinedSamples
+Article AS(
+    SELECT
+        id as article_id,
+        title
+    FROM `oheadline.skylake_prod.article`
+    WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY)
+    BETWEEN TIMESTAMP("2023-05-20") AND TIMESTAMP("2023-09-20")
 )
 SELECT
-  user_id,
-  article_id,
-  has_viewed,
-  time
-FROM
-  RankedSamples
-WHERE
-  rank <= 32
-ORDER BY
-  user_id,
-  has_viewed DESC,
-  time DESC;
-
-
-WITH PositiveSamples AS (
-  SELECT
-    user_property.user_id as user_id,
-    data.article_id as article_id,
-    TRUE as has_viewed,
-    data.determined_at as time,
-    ROW_NUMBER() OVER (PARTITION BY user_property.user_id ORDER BY data.determined_at DESC) as pos_rank
-  FROM
-    `oheadline.analytics_server_prod.viewDetailArticle`
-  WHERE
-    TIMESTAMP_TRUNC(_PARTITIONTIME, DAY) >= TIMESTAMP("2023-06-01")
-),
-NegativeSamples AS (
-  SELECT
-    user_property.user_id as user_id,
-    data.article_id as article_id,
-    FALSE as has_viewed,
-    data.determined_at as time,
-    ROW_NUMBER() OVER (PARTITION BY user_property.user_id ORDER BY data.determined_at DESC) as neg_rank
-  FROM
-    `oheadline.analytics_server_prod.viewListArticle`
-  WHERE TIMESTAMP_TRUNC(_PARTITIONTIME, DAY) >= TIMESTAMP("2023-06-01")
-  AND data.article_id NOT IN (SELECT article_id FROM PositiveSamples WHERE user_id = PositiveSamples.user_id)
-),
-CombinedSamples AS (
-  SELECT * FROM PositiveSamples
-  UNION ALL
-  SELECT * FROM NegativeSamples
-),
-RankedSamples AS (
-  SELECT
-    *,
-    ROW_NUMBER() OVER (PARTITION BY user_id, has_viewed ORDER BY time DESC) as rank
-  FROM
-    CombinedSamples
-),
-MatchedRanks AS (
-  SELECT
-    pos.user_id,
-    pos.article_id as pos_article,
-    neg.article_id as neg_article,
-    pos.time as pos_time,
-    neg.time as neg_time
-  FROM (
-    SELECT * FROM RankedSamples WHERE has_viewed = TRUE
-  ) pos
-  JOIN (
-    SELECT * FROM RankedSamples WHERE has_viewed = FALSE
-  ) neg
-  ON pos.user_id = neg.user_id AND pos.rank = neg.rank
-)
-SELECT
-  user_id,
-  CASE
-    WHEN has_viewed THEN pos_article
-    ELSE neg_article
-  END as article_id,
-  has_viewed,
-  CASE
-    WHEN has_viewed THEN pos_time
-    ELSE neg_time
-  END as time
-FROM MatchedRanks,
-UNNEST([TRUE, FALSE]) as has_viewed
-ORDER BY user_id, has_viewed DESC, time DESC;
+    sample.user_id as user_id,
+    sample.article_id as aricle_id,
+    article.title as title,
+    watch_time as watch_time,
+    has_viewed as has_viewed,
+    determined_at as determined_at
+FROM (
+    SELECT
+        user_id,
+        article_id,
+        watch_time,
+        has_viewed,
+        determined_at
+    FROM NegativeSamples
+    UNION ALL
+    SELECT
+        user_id,
+        article_id,
+        watch_time,
+        has_viewed,
+        determined_at
+    FROM PositiveSamples
+) sample
+INNER JOIN Article as article
+ON sample.article_id = article.article_id
+WHERE user_id != ''
+ORDER BY user_id, has_viewed DESC
+;

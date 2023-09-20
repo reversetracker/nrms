@@ -18,6 +18,8 @@ credentials = project.joinpath("credentials")
 
 bigquery_google_credential = credentials.joinpath("bigquery-google-credential.json")
 
-bq_results_csv = project.joinpath("bq-results-20230901.csv")
+bq_results_csv = project.joinpath("bigquery_results_20230920.csv")
 
 bq_results_parquet = project.joinpath("bq-results-20230901.parquet")
+
+queries = project.joinpath("queries.sql")
