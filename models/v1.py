@@ -9,6 +9,7 @@ import wandb
 from matplotlib import pyplot as plt
 from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from transformers import ElectraModel, ElectraTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,18 @@ class MultiHeadSelfAttention(nn.Module):
 
         context = context.contiguous().view(batch_size, seq_len, d_model)
         return context
+
+
+class DocEncoder(nn.Module):
+    def __init__(self, model_name="monologg/koelectra-base-v3-discriminator", max_length=20):
+        super(DocEncoder, self).__init__()
+        self.model = ElectraModel.from_pretrained(model_name)
+        self.max_length = max_length
+
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        embeddings = outputs.last_hidden_state
+        return embeddings
 
 
 class AdditiveAttention(nn.Module):

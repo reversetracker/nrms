@@ -1,11 +1,13 @@
 import random
 
-import numpy as np
 import pandas as pd
+import torch
 from google.oauth2.service_account import Credentials
 from torch.utils.data import Dataset, DataLoader
+from transformers import ElectraTokenizer
 
 import directories
+import models.v1
 
 
 def generate_dataset():
@@ -21,16 +23,40 @@ def generate_dataset():
     df.to_csv("bigquery_results_20230920.csv", index=False)
 
 
-def np_stack_collate(batch):
-    # Unzip the batch
-    candidate_texts, clicked_texts, browsed_texts = zip(*batch)
+def batch_encoding_collate(batch) -> tuple[dict, ...]:
+    candidate_tokens, clicked_tokens, browsed_tokens = zip(*batch)
 
-    # Stack numpy arrays
-    candidate_texts = np.stack(candidate_texts, axis=0)
-    clicked_texts = np.stack(clicked_texts, axis=0)
-    browsed_texts = np.stack(browsed_texts, axis=0)
+    candidate_input_ids = torch.stack([x["input_ids"] for x in candidate_tokens])
+    candidate_attention_mask = torch.stack([x["attention_mask"] for x in candidate_tokens])
+    _candidate_tokens = {
+        "input_ids": candidate_input_ids,
+        "attention_mask": candidate_attention_mask,
+    }
 
-    return candidate_texts, clicked_texts, browsed_texts
+    clicked_input_ids = torch.stack([x["input_ids"] for x in clicked_tokens])
+    clicked_attention_mask = torch.stack([x["attention_mask"] for x in clicked_tokens])
+    _clicked_tokens = {
+        "input_ids": clicked_input_ids,
+        "attention_mask": clicked_attention_mask,
+    }
+
+    browsed_input_ids = torch.stack([x["input_ids"] for x in browsed_tokens])
+    browsed_attention_mask = torch.stack([x["attention_mask"] for x in browsed_tokens])
+    _browsed_tokens = {
+        "input_ids": browsed_input_ids,
+        "attention_mask": browsed_attention_mask,
+    }
+
+    # CANDIDATE_TOKENS
+    # input_ids: Tensor: (64, 1, 20)
+    # attention_mask: Tensor: (64, 1, 20)
+    # CLICKED_TOKENS
+    # input_ids: Tensor: (64, 32, 20)
+    # attention_mask: Tensor: (64, 32, 20)
+    # BROWSED_TOKENS
+    # input_ids: Tensor: (64, 4, 20)
+    # attention_mask: Tensor: (64, 4, 20)
+    return _candidate_tokens, _clicked_tokens, _browsed_tokens
 
 
 class OheadlineDataset(Dataset):
@@ -41,6 +67,7 @@ class OheadlineDataset(Dataset):
         sequence_size: int = 20,
         embedding_dim: int = 768,
         K: int = 4,
+        tokenizer=None,
     ):
         self.dataframe = dataframe
         self.user_ids = self.dataframe["user_id"].unique()
@@ -49,6 +76,9 @@ class OheadlineDataset(Dataset):
         self.sequence_size = sequence_size
         self.embedding_dim = embedding_dim
         self.K = K
+        self.tokenizer = tokenizer or ElectraTokenizer.from_pretrained(
+            "monologg/koelectra-base-v3-discriminator"
+        )
 
     def __len__(self):
         return len(self.user_ids)
@@ -78,20 +108,57 @@ class OheadlineDataset(Dataset):
         candidate_text, clicked_texts = clicked_texts[0], clicked_texts[1 : self.max_articles]
         browsed_texts = browsed_texts[:4]
 
-        # padding for clicked_texts and browsed_texts
         clicked_texts = clicked_texts + [""] * (self.max_articles - len(clicked_texts))
         browsed_texts = (browsed_texts * (4 // len(browsed_texts)))[:4]
 
-        # text, list[32], list[4]
-        # Convert to numpy arrays with dtype='object' for strings
-        return [candidate_text], clicked_texts, browsed_texts
+        candidate_tokens = self.tokenizer(
+            [candidate_text],
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.sequence_size,
+            padding="max_length",
+        )
+
+        clicked_tokens = self.tokenizer(
+            clicked_texts,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.sequence_size,
+            padding="max_length",
+        )
+
+        browsed_tokens = self.tokenizer(
+            browsed_texts,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.sequence_size,
+            padding="max_length",
+        )
+
+        return candidate_tokens, clicked_tokens, browsed_tokens
 
 
 if __name__ == "__main__":
     dataframe = pd.read_csv(directories.bq_results_csv)
     dataset = OheadlineDataset(dataframe)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=np_stack_collate)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=batch_encoding_collate)
+    doc_encoder = models.v1.DocEncoder()
     for x1, x2, x3 in dataloader:
-        print(x1)
-        print(x2)
-        print(x3)
+        input_ids, attention_mask = x2["input_ids"], x2["attention_mask"]
+        # input_ids: Tensor: (64, 32, 20)
+        # attention_mask: Tensor: (64, 32, 20)
+
+        i_batch, i_count, i_seq_len = input_ids.shape
+        i_input_ids = input_ids.view(i_batch * i_count, i_seq_len)
+        # i_input_ids: Tensor: (2048, 20)
+        # i_attention_mask: Tensor: (2048, 20)
+
+        m_batch, m_count, m_seq_len = attention_mask.shape
+        m_attention_mask = attention_mask.view(m_batch * m_count, m_seq_len)
+        print(i_input_ids.shape, m_attention_mask.shape)
+        # torch.Size([2048, 20]) torch.Size([2048, 20])
+
+        embeddings = doc_encoder(i_input_ids, m_attention_mask)
+        # torch.Size([2048, 20, 768])
+        # torch.Size([2048, 20])
+        print(embeddings.shape)
