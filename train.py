@@ -9,13 +9,17 @@ import directories
 import wandb
 from models.v1 import NRMS
 
-parallel_num = 4
+PARALLEL_NUM = 4
 
-batch_size = 64  # users
-articles = 64  # articles
-seq_length = 20  # words number of each article
-embed_size = 768  # embedding size
-num_heads = 8  # number of heads
+BATCH_SIZE = 64  # users
+
+ARTICLES = 64  # articles
+
+SEQ_LENGTH = 20  # words number of each article
+
+EMBED_SIZE = 768  # embedding size
+
+NUM_HEADS = 8  # number of heads
 
 
 def main():
@@ -33,16 +37,16 @@ def main():
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=parallel_num
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=PARALLEL_NUM
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=PARALLEL_NUM
     )
     test_loader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=parallel_num
+        test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=PARALLEL_NUM
     )
 
-    nrms = NRMS(embed_size, num_heads)
+    nrms = NRMS(EMBED_SIZE, NUM_HEADS)
 
     # Define callbacks below
     checkpoint_callback = ModelCheckpoint(

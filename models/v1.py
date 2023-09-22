@@ -73,10 +73,10 @@ class AdditiveAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, n_head: int, dropout: float = 0.1):
+    def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float = 0.1):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            input_dim, n_head, batch_first=True, dropout=dropout
+            input_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(input_dim, output_dim)
 
@@ -113,10 +113,10 @@ class NewsEncoder(nn.Module):
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, input_dim: int, n_head: int, dropout: float = 0.2):
+    def __init__(self, input_dim: int, num_heads: int, dropout: float = 0.2):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            input_dim, n_head, batch_first=True, dropout=dropout
+            input_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(input_dim, input_dim)
 
