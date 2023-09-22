@@ -10,12 +10,8 @@ from datasets.v1 import OheadlineDataset
 def generate_sample_dataframe():
     """데모 데이터 프레임 생성 함수"""
     np.random.seed(42)  # 원하는 시드 값으로 변경 가능
-    dataframe = pd.read_csv(directories.bq_results_csv)
-    # 유니크한 user_id 중에서 랜덤하게 10명을 선택합니다.
-    selected_user_ids = dataframe["user_id"].drop_duplicates().sample(100)
-    # 선택된 유저들의 데이터만 필터링하여 새로운 데이터프레임에 저장합니다.
-    filtered_dataframe = dataframe[dataframe["user_id"].isin(selected_user_ids)]
-    return filtered_dataframe
+    dataframe = pd.read_csv(directories.test_dataset_csv)
+    return dataframe
 
 
 @pytest.fixture
@@ -25,7 +21,7 @@ def sample_dataset():
 
 
 def test_dataset_length(sample_dataset):
-    assert len(sample_dataset) == 100  # 100 개의 고유한 사용자
+    assert len(sample_dataset) == 128  # 128 개의 고유한 사용자
 
 
 def test_get_item_structure(sample_dataset):

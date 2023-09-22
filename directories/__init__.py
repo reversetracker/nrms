@@ -23,3 +23,7 @@ bq_results_csv = project.joinpath("bigquery_results_20230920.csv")
 bq_results_parquet = project.joinpath("bq-results-20230901.parquet")
 
 queries = project.joinpath("queries.sql")
+
+tests = project.joinpath("tests")
+
+test_dataset_csv = tests.joinpath("test_dataset.csv")
