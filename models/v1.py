@@ -64,6 +64,9 @@ class AdditiveAttention(nn.Module):
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
 
+        nn.init.xavier_normal_(self.query)
+        nn.init.xavier_normal_(self.linear.weight)
+
     def forward(self, x: torch.Tensor):
         x_proj = self.linear(x)
         x_proj = self.tanh(x_proj)
@@ -73,15 +76,16 @@ class AdditiveAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_heads: int, dropout: float = 0.1):
+    def __init__(self, input_dim: int, output_dim: int, num_heads: int = 18, dropout: float = 0.2):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(input_dim, output_dim)
-
         self.linear = nn.Linear(input_dim, output_dim)
         self.tanh = nn.Tanh()
+
+        nn.init.xavier_normal_(self.linear.weight)
 
     def forward(
         self,
@@ -113,15 +117,16 @@ class NewsEncoder(nn.Module):
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, input_dim: int, num_heads: int, dropout: float = 0.2):
+    def __init__(self, input_dim: int, num_heads: int = 8, dropout: float = 0.2):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(input_dim, input_dim)
-
         self.linear = nn.Linear(input_dim, input_dim)
         self.tanh = nn.Tanh()
+
+        nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         logger.debug(f"x shape: {x.shape}")
@@ -283,7 +288,7 @@ class NRMS(pl.LightningModule):
         return user_vector
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=0.0001, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=0)
         scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
@@ -316,9 +321,8 @@ class NRMS(pl.LightningModule):
             browsed_input_ids,
             browsed_attention_mask,
         )
-        probs = F.softmax(scores, dim=-1)
         loss = self.criterion(
-            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
+            scores, torch.LongTensor([0 for _ in range(scores.shape[0])]).to("mps")
         )
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
@@ -347,9 +351,8 @@ class NRMS(pl.LightningModule):
             browsed_input_ids,
             browsed_attention_mask,
         )
-        probs = F.softmax(scores, dim=-1)
         loss = self.criterion(
-            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
+            scores, torch.LongTensor([0 for _ in range(scores.shape[0])]).to("mps")
         )
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)

@@ -9,7 +9,7 @@ import directories
 import wandb
 from models.v1 import NRMS
 
-PARALLEL_NUM = 4
+PARALLEL_NUM = 2
 
 BATCH_SIZE = 64  # users
 
