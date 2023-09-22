@@ -22,7 +22,7 @@ def main():
     wandb_logger = WandbLogger()
     wandb.init(project="nrms")
 
-    dataframe = pd.read_csv(directories.bq_results_csv)
+    dataframe = pd.read_csv(directories.train_dataset_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
     train_size = int(0.90 * len(dataset))

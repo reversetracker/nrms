@@ -142,7 +142,7 @@ class OheadlineDataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataframe = pd.read_csv(directories.bq_results_csv)
+    dataframe = pd.read_csv(directories.train_dataset_csv)
     dataset = OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=batch_encoding_collate)
     doc_encoder = models.v1.DocEncoder()

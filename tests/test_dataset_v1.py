@@ -7,16 +7,10 @@ import directories
 from datasets.v1 import OheadlineDataset
 
 
-def generate_sample_dataframe():
-    """데모 데이터 프레임 생성 함수"""
-    np.random.seed(42)  # 원하는 시드 값으로 변경 가능
-    dataframe = pd.read_csv(directories.test_dataset_csv)
-    return dataframe
-
-
 @pytest.fixture
 def sample_dataset():
-    sample_df = generate_sample_dataframe()  # 100 개의 샘플 데이터 생성
+    np.random.seed(42)  # 원하는 시드 값으로 변경 가능
+    sample_df = pd.read_csv(directories.unittest_dataset_csv)
     return OheadlineDataset(dataframe=sample_df)
 
 
@@ -35,10 +29,8 @@ def test_get_item_structure(sample_dataset):
         assert "attention_mask" in tokens
 
 
-def test_dataloader_iteration():
-    sample_df = generate_sample_dataframe()
-    dataset = OheadlineDataset(dataframe=sample_df)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+def test_dataloader_iteration(sample_dataset):
+    dataloader = DataLoader(sample_dataset, batch_size=32, shuffle=True)
 
     for batch in dataloader:
         assert len(batch) == 3  # candidate_tokens, clicked_tokens, browsed_tokens
@@ -49,9 +41,7 @@ def test_dataloader_iteration():
 
 
 def test_dataloader_batch_shape(sample_dataset):
-    sample_df = generate_sample_dataframe()
-    dataset = OheadlineDataset(dataframe=sample_df)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+    dataloader = DataLoader(sample_dataset, batch_size=64, shuffle=True)
 
     # Expected shapes
     # (users, articles, words)

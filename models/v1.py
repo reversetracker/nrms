@@ -39,7 +39,11 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class DocEncoder(nn.Module):
-    def __init__(self, model_name="monologg/koelectra-base-v3-discriminator", max_length=20):
+    def __init__(
+        self,
+        max_length: int = 20,
+        model_name: str = "monologg/koelectra-base-v3-discriminator",
+    ):
         super(DocEncoder, self).__init__()
         self.model = ElectraModel.from_pretrained(model_name)
         self.max_length = max_length
@@ -83,12 +87,10 @@ class NewsEncoder(nn.Module):
         self,
         x: torch.Tensor,
         key_padding_masks: torch.Tensor = None,
-        softmax_masks: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         logger.debug(f"x shape: {x.shape}")
 
         assert key_padding_masks.shape == (x.shape[0], x.shape[1])
-        assert softmax_masks.shape == (x.shape[0], 1)
 
         # Multi-head attention
         context, context_weights = self.multi_head_attention(
@@ -103,7 +105,6 @@ class NewsEncoder(nn.Module):
 
         # Additive attention
         additive_weights = self.additive_attention(context)
-        additive_weights = additive_weights * softmax_masks
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
@@ -145,16 +146,21 @@ class UserEncoder(nn.Module):
 
 
 class NRMS(pl.LightningModule):
-    def __init__(self, input_dim: int = 768, output_dim: int = 128, num_heads: int = 8):
+    def __init__(self, input_dim: int = 768, encoder_dim: int = 128, num_heads: int = 8):
         super(NRMS, self).__init__()
 
         self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.encoder_dim = encoder_dim  # news & user encoder output dimension
         self.num_heads = num_heads
 
-        self.news_encoder = NewsEncoder(input_dim, output_dim, num_heads)
-        self.user_encoder = UserEncoder(output_dim, num_heads)
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.doc_encoder = DocEncoder()
+        # freeze the doc_encoder
+        for param in self.doc_encoder.parameters():
+            param.requires_grad = False
+
+        self.news_encoder = NewsEncoder(input_dim, encoder_dim, num_heads)
+        self.user_encoder = UserEncoder(encoder_dim, num_heads)
+        self.criterion = nn.CrossEntropyLoss()
 
         self.training_step_outputs = []
         self.validating_step_outputs = []
@@ -162,21 +168,119 @@ class NRMS(pl.LightningModule):
 
         self.save_hyperparameters()
 
-    def forward(self, titles, key_padding_masks, softmax_masks):
-        users, articles, seq_length, embed_size = titles.shape
+    def forward(
+        self,
+        candidate_ids: torch.Tensor,
+        candidate_attention_mask: torch.Tensor,
+        clicked_ids: torch.Tensor,
+        clicked_attention_mask: torch.Tensor,
+        browsed_ids: torch.Tensor,
+        browsed_attention_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Forward pass for the NRMS model.
 
-        reshaped_titles = titles.view(users * articles, seq_length, embed_size)
-        reshaped_key_padding_masks = key_padding_masks.view(users * articles, seq_length)
-        reshaped_softmax_masks = softmax_masks.view(users * articles, 1)
+        Args:
+            candidate_ids (torch.Tensor): Input token ids for the candidate news. (users, titles, seq_length)
+            candidate_attention_mask (torch.Tensor): Attention mask for the candidate news. (users, titles, seq_length)
+            clicked_ids (torch.Tensor): Input token ids for the clicked news. (users, titles, seq_length)
+            clicked_attention_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
+            browsed_ids (torch.Tensor): Input token ids for the browsed news. (users, titles, seq_length)
+            browsed_attention_mask (torch.Tensor): Attention mask for the browsed news. (users, titles, seq_length)
 
-        news_output, attn_weights, additive_attn_weights = self.news_encoder(
-            reshaped_titles, reshaped_key_padding_masks, reshaped_softmax_masks
+        Returns:
+            torch.Tensor: Scores for each candidate news. (users, 5)
+            torch.Tensor: Candidate Context Weights.
+            torch.Tensor: Candidate Additive Weights.
+        """
+
+        # candidate
+        candidate_news_vectors, c_c_weights, c_a_weights = self.forward_news_encoder(
+            candidate_ids, candidate_attention_mask
         )
-        news_output = news_output.view(users, articles, self.output_dim)
-        user_output = self.user_encoder(news_output)
+        # shape: (users, titles, seq_length, embed_size)
 
-        scores = torch.bmm(news_output, user_output.unsqueeze(2)).squeeze(2)
-        return scores, attn_weights, additive_attn_weights
+        # browsed
+        browsed_news_vectors, _, __ = self.forward_news_encoder(browsed_ids, browsed_attention_mask)
+        # shape: (users, titles, seq_length, embed_size)
+
+        # clicked
+        clicked_user_vectors = self.forward_user_encoder(clicked_ids, clicked_attention_mask)
+        # shape: (users, embed_size)
+
+        # candidate (True) & browsed (False x 4) 를 합칩니다.
+        news_vectors = torch.cat([candidate_news_vectors, browsed_news_vectors], dim=1)
+        # shape: (users, 5, encoder_dim)
+
+        # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 를 얻습니다.
+        scores = torch.bmm(news_vectors, clicked_user_vectors.unsqueeze(2)).squeeze(
+            2
+        )  # shape: (users, 5)
+
+        return scores, c_c_weights, c_a_weights
+
+    def forward_doc_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        """Forward pass for the document encoder.
+
+        Args:
+            input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
+            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
+
+        Returns:
+            torch.Tensor: Document embeddings. (users, titles, seq_length, embed_size)
+        """
+        users, titles, seq_length = input_ids.shape
+
+        # reshape input_ids and attention_mask
+        reshaped_input_ids = input_ids.view(users * titles, seq_length)
+        reshaped_attention_mask = attention_mask.view(users * titles, seq_length)
+
+        # forward
+        embeddings = self.doc_encoder(reshaped_input_ids, reshaped_attention_mask)
+        # rollback the shape and order
+        embeddings = embeddings.view(users, titles, seq_length, self.input_dim)
+        return embeddings  # shape: (users, titles, seq_length, embed_size)
+
+    def forward_news_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        """Forward pass for the news encoder.
+
+        Args:
+            input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
+            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
+
+        Returns:
+            torch.Tensor: News embeddings. (users, titles, encoder_dim)
+        """
+
+        embeddings = self.forward_doc_encoder(input_ids, attention_mask)
+        users, titles, seq_length, embed_size = embeddings.shape
+
+        embeddings = embeddings.view(users * titles, seq_length, embed_size)
+        key_padding_mask = attention_mask.view(users * titles, seq_length)
+        key_padding_mask = ~key_padding_mask.bool()
+
+        news_vectors, c_weights, a_weights = self.news_encoder(embeddings, key_padding_mask)
+        news_vectors = news_vectors.view(users, titles, self.encoder_dim)
+        return news_vectors, c_weights, a_weights
+
+    def forward_user_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        """Forward pass for the user encoder.
+
+        Args:
+            input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
+            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
+
+        Returns:
+            torch.Tensor: User embeddings. (users, encoder_dim)
+        """
+        news_vectors, _, __ = self.forward_news_encoder(input_ids, attention_mask)
+        users, titles, encoder_dim = news_vectors.shape
+
+        # forward here
+        user_vector = self.user_encoder(news_vectors)
+
+        # user 가 읽은 기사가 모두 합쳐져서 벡터를 생성 하므로.. title 개수 차원이 merge 되어야 함
+        assert user_vector.shape == (users, encoder_dim)
+        return user_vector
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=0.0001, weight_decay=1e-5)
@@ -190,26 +294,69 @@ class NRMS(pl.LightningModule):
         }
 
     def training_step(self, batch, batch_idx):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores, _, __ = self.forward(titles, key_padding_masks, softmax_masks)
-        loss = self.criterion(scores, labels.float())
+        candidate, clicked, browsed = batch
+
+        # CANDIDATE
+        candidate_input_ids = candidate["input_ids"]
+        candidate_attention_mask = candidate["attention_mask"]
+
+        # CLICKED
+        clicked_input_ids = clicked["input_ids"]
+        clicked_attention_mask = clicked["attention_mask"]
+
+        # BROWSED
+        browsed_input_ids = browsed["input_ids"]
+        browsed_attention_mask = browsed["attention_mask"]
+
+        scores, _, __ = self.forward(
+            candidate_input_ids,
+            candidate_attention_mask,
+            clicked_input_ids,
+            clicked_attention_mask,
+            browsed_input_ids,
+            browsed_attention_mask,
+        )
+        probs = F.softmax(scores, dim=-1)
+        loss = self.criterion(
+            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
+        )
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores, attn_weights, additive_softmax = self.forward(
-            titles, key_padding_masks, softmax_masks
+        candidate, clicked, browsed = batch
+
+        # CANDIDATE
+        candidate_input_ids = candidate["input_ids"]
+        candidate_attention_mask = candidate["attention_mask"]
+
+        # CLICKED
+        clicked_input_ids = clicked["input_ids"]
+        clicked_attention_mask = clicked["attention_mask"]
+
+        # BROWSED
+        browsed_input_ids = browsed["input_ids"]
+        browsed_attention_mask = browsed["attention_mask"]
+
+        scores, c_weights, a_weights = self.forward(
+            candidate_input_ids,
+            candidate_attention_mask,
+            clicked_input_ids,
+            clicked_attention_mask,
+            browsed_input_ids,
+            browsed_attention_mask,
         )
-        loss = self.criterion(scores, labels.float())
+        probs = F.softmax(scores, dim=-1)
+        loss = self.criterion(
+            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
+        )
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
 
         # attention visualization logging here..
         fig, ax = plt.subplots(figsize=(10, 10))
-        specific_attn_weights = attn_weights[0]
-        sns.heatmap(specific_attn_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
+        sns.heatmap(c_weights[0].cpu().detach().numpy(), ax=ax, cmap="viridis")
         ax.set_title("Attention Weights")
         wandb.log(
             {
@@ -222,19 +369,46 @@ class NRMS(pl.LightningModule):
 
         # additive softmax_results visualization logging
         fig, ax = plt.subplots(figsize=(10, 10))
-        sns.heatmap(additive_softmax.cpu().detach().numpy(), ax=ax, cmap="viridis")
+        sns.heatmap(a_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
         ax.set_title("Additive Weights")
         wandb.log(
-            {"additive_softmax": [wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")]}
+            {
+                "additive_softmax": [
+                    wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}"),
+                ]
+            }
         )
         plt.close(fig)
 
         return {"val_loss": loss}
 
     def test_step(self, batch, batch_idx):
-        titles, labels, key_padding_masks, softmax_masks = batch
-        scores, _, __ = self.forward(titles, key_padding_masks, softmax_masks)
-        loss = self.criterion(scores, labels.float())
+        candidate, clicked, browsed = batch
+
+        # CANDIDATE
+        candidate_input_ids = candidate["input_ids"]
+        candidate_attention_mask = candidate["attention_mask"]
+
+        # CLICKED
+        clicked_input_ids = clicked["input_ids"]
+        clicked_attention_mask = clicked["attention_mask"]
+
+        # BROWSED
+        browsed_input_ids = browsed["input_ids"]
+        browsed_attention_mask = browsed["attention_mask"]
+
+        scores, c_weights, a_weights = self.forward(
+            candidate_input_ids,
+            candidate_attention_mask,
+            clicked_input_ids,
+            clicked_attention_mask,
+            browsed_input_ids,
+            browsed_attention_mask,
+        )
+        probs = F.softmax(scores, dim=-1)
+        loss = self.criterion(
+            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
+        )
 
         self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.testing_step_outputs.append(loss)
