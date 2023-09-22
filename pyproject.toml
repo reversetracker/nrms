@@ -66,6 +66,7 @@ chardet = "^5.2.0"
 wandb = "^0.15.10"
 seaborn = "^0.12.2"
 pandas-gbq = "^0.19.2"
+pytest = "^7.4.2"
 
 [build-system]
 requires = ["poetry-core"]

@@ -64,7 +64,7 @@ FilteredNegativeSamples AS (
     LEFT JOIN PositiveSamples ps
     ON ns.article_id = ps.article_id
     AND ns.user_id = ps.user_id
-    WHERE ps.article_id IS NULL
+    WHERE ps.article_id IS NULL OR ps.user_id IS NULL
 ),
 NegativeSamples AS (
     SELECT
@@ -112,5 +112,4 @@ FROM (
 INNER JOIN Article as article
 ON sample.article_id = article.article_id
 WHERE user_id != ''
-ORDER BY user_id, has_viewed DESC
-;
+ORDER BY user_id, has_viewed DESC;

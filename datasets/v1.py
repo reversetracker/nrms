@@ -19,7 +19,13 @@ def generate_dataset():
         project_id="oheadline",
         credentials=credentials,
     )
-    print(df.head())
+
+    def only_active_users(group):
+        has_viewed_true_count = group[group["has_viewed"] == True].shape[0]
+        has_viewed_false_count = group[group["has_viewed"] == False].shape[0]
+        return has_viewed_true_count > 2 and has_viewed_false_count > 4
+
+    df = df.groupby("user_id").filter(only_active_users)
     df.to_csv("bigquery_results_20230920.csv", index=False)
 
 
@@ -83,8 +89,8 @@ class OheadlineDataset(Dataset):
     def __len__(self):
         return len(self.user_ids)
 
-    def __getitem__(self, _):
-        user_id = random.choice(self.user_ids)
+    def __getitem__(self, index: int):
+        user_id = self.user_ids[index]
         user_data = self.user_data_groups[user_id]
 
         titles = user_data["title"].values.tolist()[:64]
@@ -98,9 +104,6 @@ class OheadlineDataset(Dataset):
             for x in zip(titles, has_viewed_list)
             if x[1] is False and x[0] not in clicked_texts
         ]
-
-        if len(clicked_texts) < 2 or len(browsed_texts) < 4:
-            return self.__getitem__(_)
 
         random.shuffle(clicked_texts)
         random.shuffle(browsed_texts)
