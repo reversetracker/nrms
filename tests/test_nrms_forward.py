@@ -47,7 +47,7 @@ def test_nrms_forward(sample_dataloader):
     browsed_input_ids = browsed["input_ids"]
     browsed_attention_mask = browsed["attention_mask"]
 
-    candidate_embeddings = nrms.forward(
+    scores, c_weights, a_weights = nrms.forward(
         candidate_input_ids,
         candidate_attention_mask,
         clicked_input_ids,
@@ -55,4 +55,7 @@ def test_nrms_forward(sample_dataloader):
         browsed_input_ids,
         browsed_attention_mask,
     )
-    print(candidate_embeddings.shape)
+
+    assert scores.shape == (64, 5)
+    assert c_weights.shape == (64, 20, 20)
+    assert a_weights.shape == (64, 20)
