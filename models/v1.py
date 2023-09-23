@@ -58,7 +58,7 @@ class DeprecatedAdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
     def __init__(self, input_dim: int = 768, output_dim: int = 128):
-        super(AdditiveAttention, self).__init__()
+        super(DeprecatedAdditiveAttention, self).__init__()
         self.linear = nn.Linear(input_dim, output_dim, bias=True)
         self.query = nn.Parameter(torch.randn(output_dim))
         self.tanh = nn.Tanh()
