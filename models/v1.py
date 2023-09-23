@@ -9,7 +9,7 @@ import wandb
 from matplotlib import pyplot as plt
 from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from transformers import ElectraModel, ElectraTokenizer
+from transformers import ElectraModel
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,6 @@ class AdditiveAttention(nn.Module):
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
 
-        nn.init.xavier_normal_(self.query)
         nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, x: torch.Tensor):
@@ -76,7 +75,13 @@ class AdditiveAttention(nn.Module):
 
 
 class NewsEncoder(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int, num_heads: int = 18, dropout: float = 0.2):
+    def __init__(
+        self,
+        input_dim: int = 768,
+        output_dim: int = 128,
+        num_heads: int = 8,
+        dropout: float = 0.2,
+    ):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
@@ -92,7 +97,7 @@ class NewsEncoder(nn.Module):
         x: torch.Tensor,
         key_padding_masks: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        logger.debug(f"x shape: {x.shape}")
+        logger.warning(f"x shape: {x.shape}")
 
         assert key_padding_masks.shape == (x.shape[0], x.shape[1])
 
@@ -100,24 +105,29 @@ class NewsEncoder(nn.Module):
         context, context_weights = self.multi_head_attention(
             x, x, x, key_padding_mask=key_padding_masks
         )
-        logger.debug(f"context shape: {context.shape}")
+        logger.warning(f"context shape: {context.shape}")
 
         # Fully connected layer
         transformed_context = self.linear(context)
         transformed_context = self.tanh(transformed_context)
-        logger.debug(f"transformed_context shape: {transformed_context.shape}")
+        logger.warning(f"transformed context shape: {transformed_context.shape}")
 
         # Additive attention
         additive_weights = self.additive_attention(context)
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
-        logger.debug(f"out shape: {out.shape}")
+        logger.warning(f"news encoder out shape: {out.shape}")
         return out, context_weights, additive_weights
 
 
 class UserEncoder(nn.Module):
-    def __init__(self, input_dim: int, num_heads: int = 8, dropout: float = 0.2):
+    def __init__(
+        self,
+        input_dim: int = 128,
+        num_heads: int = 8,
+        dropout: float = 0.2,
+    ):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
@@ -129,42 +139,53 @@ class UserEncoder(nn.Module):
         nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        logger.debug(f"x shape: {x.shape}")
+        logger.warning(f"x shape: {x.shape}")
 
         # Multi-head attention
         context, _ = self.multi_head_attention(x, x, x)
-        logger.debug(f"context shape: {context.shape}")
+        logger.warning(f"context shape: {context.shape}")
 
         # Fully connected layer
         transformed_context = self.linear(context)
         transformed_context = self.tanh(transformed_context)
-        logger.debug(f"transformed_context shape: {transformed_context.shape}")
+        logger.warning(f"transformed context shape: {transformed_context.shape}")
 
         # Additive attention
         additive_weights = self.additive_attention(context)
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
-        logger.debug(f"out shape: {out.shape}")
+        logger.warning(f"user encoder out shape: {out.shape}")
 
         return out
 
 
 class NRMS(pl.LightningModule):
-    def __init__(self, input_dim: int = 768, encoder_dim: int = 128, num_heads: int = 8):
+    def __init__(
+        self,
+        input_dim: int = 768,
+        encoder_dim: int = 128,
+        num_heads_news_encoder: int = 8,
+        num_heads_user_encoder: int = 8,
+    ):
         super(NRMS, self).__init__()
 
         self.input_dim = input_dim
         self.encoder_dim = encoder_dim  # news & user encoder output dimension
-        self.num_heads = num_heads
+        self.num_heads_news_encoder = num_heads_news_encoder
+        self.num_heads_user_encoder = num_heads_user_encoder
 
         self.doc_encoder = DocEncoder()
         # freeze the doc_encoder
         for param in self.doc_encoder.parameters():
             param.requires_grad = False
 
-        self.news_encoder = NewsEncoder(input_dim, encoder_dim, num_heads)
-        self.user_encoder = UserEncoder(encoder_dim, num_heads)
+        self.news_encoder = NewsEncoder(
+            input_dim=input_dim,
+            output_dim=encoder_dim,
+            num_heads=num_heads_news_encoder,
+        )
+        self.user_encoder = UserEncoder(encoder_dim)
         self.criterion = nn.CrossEntropyLoss()
 
         self.training_step_outputs = []
@@ -288,7 +309,7 @@ class NRMS(pl.LightningModule):
         return user_vector
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=0)
+        optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
         scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
@@ -321,9 +342,9 @@ class NRMS(pl.LightningModule):
             browsed_input_ids,
             browsed_attention_mask,
         )
-        loss = self.criterion(
-            scores, torch.LongTensor([0 for _ in range(scores.shape[0])]).to("mps")
-        )
+        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
+        loss = self.criterion(scores, labels)
+
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
         return loss
@@ -351,9 +372,9 @@ class NRMS(pl.LightningModule):
             browsed_input_ids,
             browsed_attention_mask,
         )
-        loss = self.criterion(
-            scores, torch.LongTensor([0 for _ in range(scores.shape[0])]).to("mps")
-        )
+        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
+        loss = self.criterion(scores, labels)
+
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
 
@@ -408,10 +429,8 @@ class NRMS(pl.LightningModule):
             browsed_input_ids,
             browsed_attention_mask,
         )
-        probs = F.softmax(scores, dim=-1)
-        loss = self.criterion(
-            probs, torch.Tensor([[1, 0, 0, 0, 0] for _ in range(probs.shape[0])]).to("mps")
-        )
+        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
+        loss = self.criterion(scores, labels)
 
         self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.testing_step_outputs.append(loss)

@@ -142,26 +142,6 @@ class OheadlineDataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataframe = pd.read_csv(directories.train_dataset_csv)
+    dataframe = pd.read_csv(directories.unittest_dataset_csv)
     dataset = OheadlineDataset(dataframe)
-    dataloader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=batch_encoding_collate)
-    doc_encoder = models.v1.DocEncoder()
-    for x1, x2, x3 in dataloader:
-        input_ids, attention_mask = x2["input_ids"], x2["attention_mask"]
-        # input_ids: Tensor: (64, 32, 20)
-        # attention_mask: Tensor: (64, 32, 20)
-
-        i_batch, i_count, i_seq_len = input_ids.shape
-        i_input_ids = input_ids.view(i_batch * i_count, i_seq_len)
-        # i_input_ids: Tensor: (2048, 20)
-        # i_attention_mask: Tensor: (2048, 20)
-
-        m_batch, m_count, m_seq_len = attention_mask.shape
-        m_attention_mask = attention_mask.view(m_batch * m_count, m_seq_len)
-        print(i_input_ids.shape, m_attention_mask.shape)
-        # torch.Size([2048, 20]) torch.Size([2048, 20])
-
-        embeddings = doc_encoder(i_input_ids, m_attention_mask)
-        # torch.Size([2048, 20, 768])
-        # torch.Size([2048, 20])
-        print(embeddings.shape)
+    dataloader = DataLoader(dataset, batch_size=64, shuffle=True)

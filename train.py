@@ -13,13 +13,17 @@ PARALLEL_NUM = 2
 
 BATCH_SIZE = 64  # users
 
-ARTICLES = 64  # articles
+TITLES = 64  # articles
 
 SEQ_LENGTH = 20  # words number of each article
 
 EMBED_SIZE = 768  # embedding size
 
-NUM_HEADS = 8  # number of heads
+NUM_HEADS_NEWS_ENCODER = 8  # number of heads
+
+NUM_HEADS_USER_ENCODER = 8  # number of heads
+
+ENCODER_DIM = 128  # encoder dimension
 
 
 def main():
@@ -37,16 +41,32 @@ def main():
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=PARALLEL_NUM
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=PARALLEL_NUM
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=PARALLEL_NUM
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=PARALLEL_NUM,
     )
 
-    nrms = NRMS(EMBED_SIZE, NUM_HEADS)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=PARALLEL_NUM,
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=PARALLEL_NUM,
+    )
+
+    nrms = NRMS(
+        input_dim=EMBED_SIZE,
+        encoder_dim=ENCODER_DIM,
+        num_heads_news_encoder=NUM_HEADS_NEWS_ENCODER,
+        num_heads_user_encoder=NUM_HEADS_USER_ENCODER,
+    )
 
     # Define callbacks below
     checkpoint_callback = ModelCheckpoint(
