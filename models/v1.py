@@ -54,7 +54,7 @@ class DocEncoder(nn.Module):
         return embeddings
 
 
-class AdditiveAttention(nn.Module):
+class DeprecatedAdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
     def __init__(self, input_dim: int = 768, output_dim: int = 128):
@@ -70,6 +70,27 @@ class AdditiveAttention(nn.Module):
         x_proj = self.linear(x)
         x_proj = self.tanh(x_proj)
         attn_scores = torch.matmul(x_proj, self.query)
+        attn_probs = self.softmax(attn_scores)
+        return attn_probs
+
+
+class AdditiveAttention(nn.Module):
+    """Additive Attention learns the importance of each word in the sequence."""
+
+    def __init__(self, input_dim: int = 768, output_dim: int = 128):
+        super(AdditiveAttention, self).__init__()
+
+        self.proj = nn.Linear(input_dim, output_dim, bias=True)
+        self.proj_v = nn.Linear(output_dim, 1, bias=False)  # No bias for this layer, similar to A.
+        self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax(dim=1)
+
+        nn.init.xavier_normal_(self.proj.weight)
+
+    def forward(self, x: torch.Tensor):
+        x_proj = self.proj(x)
+        x_proj = self.tanh(x_proj)
+        attn_scores = self.proj_v(x_proj).squeeze(-1)
         attn_probs = self.softmax(attn_scores)
         return attn_probs
 
@@ -97,7 +118,7 @@ class NewsEncoder(nn.Module):
         x: torch.Tensor,
         key_padding_masks: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        logger.warning(f"x shape: {x.shape}")
+        logger.debug(f"x shape: {x.shape}")
 
         assert key_padding_masks.shape == (x.shape[0], x.shape[1])
 
@@ -105,19 +126,19 @@ class NewsEncoder(nn.Module):
         context, context_weights = self.multi_head_attention(
             x, x, x, key_padding_mask=key_padding_masks
         )
-        logger.warning(f"context shape: {context.shape}")
+        logger.debug(f"context shape: {context.shape}")
 
         # Fully connected layer
         transformed_context = self.linear(context)
         transformed_context = self.tanh(transformed_context)
-        logger.warning(f"transformed context shape: {transformed_context.shape}")
+        logger.debug(f"transformed context shape: {transformed_context.shape}")
 
         # Additive attention
         additive_weights = self.additive_attention(context)
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
-        logger.warning(f"news encoder out shape: {out.shape}")
+        logger.debug(f"news encoder out shape: {out.shape}")
         return out, context_weights, additive_weights
 
 
@@ -139,23 +160,23 @@ class UserEncoder(nn.Module):
         nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        logger.warning(f"x shape: {x.shape}")
+        logger.debug(f"x shape: {x.shape}")
 
         # Multi-head attention
         context, _ = self.multi_head_attention(x, x, x)
-        logger.warning(f"context shape: {context.shape}")
+        logger.debug(f"context shape: {context.shape}")
 
         # Fully connected layer
         transformed_context = self.linear(context)
         transformed_context = self.tanh(transformed_context)
-        logger.warning(f"transformed context shape: {transformed_context.shape}")
+        logger.debug(f"transformed context shape: {transformed_context.shape}")
 
         # Additive attention
         additive_weights = self.additive_attention(context)
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
-        logger.warning(f"user encoder out shape: {out.shape}")
+        logger.debug(f"user encoder out shape: {out.shape}")
 
         return out
 
@@ -176,9 +197,12 @@ class NRMS(pl.LightningModule):
         self.num_heads_user_encoder = num_heads_user_encoder
 
         self.doc_encoder = DocEncoder()
-        # freeze the doc_encoder
-        for param in self.doc_encoder.parameters():
+
+        for param in self.doc_encoder.model.parameters():
             param.requires_grad = False
+
+        for param in self.doc_encoder.model.encoder.layer[-1].parameters():
+            param.requires_grad = True
 
         self.news_encoder = NewsEncoder(
             input_dim=input_dim,
@@ -310,13 +334,13 @@ class NRMS(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
-        scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
+        # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "avg_val_loss",
-            },
+            # "lr_scheduler": {
+            #     "scheduler": scheduler,
+            #     "monitor": "avg_val_loss",
+            # },
         }
 
     def training_step(self, batch, batch_idx):

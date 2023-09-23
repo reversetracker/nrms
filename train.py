@@ -19,7 +19,7 @@ SEQ_LENGTH = 20  # words number of each article
 
 EMBED_SIZE = 768  # embedding size
 
-NUM_HEADS_NEWS_ENCODER = 8  # number of heads
+NUM_HEADS_NEWS_ENCODER = 16  # number of heads
 
 NUM_HEADS_USER_ENCODER = 8  # number of heads
 
@@ -80,8 +80,8 @@ def main():
 
     # Define trainer and fit model
     trainer = pl.Trainer(
-        max_epochs=5,
-        log_every_n_steps=5,
+        max_epochs=100,
+        log_every_n_steps=1,
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
     )
