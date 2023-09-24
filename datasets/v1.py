@@ -1,13 +1,11 @@
 import random
 
 import pandas as pd
-import torch
 from google.oauth2.service_account import Credentials
 from torch.utils.data import Dataset, DataLoader
 from transformers import ElectraTokenizer
 
 import directories
-import models.v1
 
 
 def generate_dataset():
@@ -27,42 +25,6 @@ def generate_dataset():
 
     df = df.groupby("user_id").filter(only_active_users)
     df.to_csv("bigquery_results_20230920.csv", index=False)
-
-
-def batch_encoding_collate(batch) -> tuple[dict, ...]:
-    candidate_tokens, clicked_tokens, browsed_tokens = zip(*batch)
-
-    candidate_input_ids = torch.stack([x["input_ids"] for x in candidate_tokens])
-    candidate_attention_mask = torch.stack([x["attention_mask"] for x in candidate_tokens])
-    _candidate_tokens = {
-        "input_ids": candidate_input_ids,
-        "attention_mask": candidate_attention_mask,
-    }
-
-    clicked_input_ids = torch.stack([x["input_ids"] for x in clicked_tokens])
-    clicked_attention_mask = torch.stack([x["attention_mask"] for x in clicked_tokens])
-    _clicked_tokens = {
-        "input_ids": clicked_input_ids,
-        "attention_mask": clicked_attention_mask,
-    }
-
-    browsed_input_ids = torch.stack([x["input_ids"] for x in browsed_tokens])
-    browsed_attention_mask = torch.stack([x["attention_mask"] for x in browsed_tokens])
-    _browsed_tokens = {
-        "input_ids": browsed_input_ids,
-        "attention_mask": browsed_attention_mask,
-    }
-
-    # CANDIDATE_TOKENS
-    # input_ids: Tensor: (64, 1, 20)
-    # attention_mask: Tensor: (64, 1, 20)
-    # CLICKED_TOKENS
-    # input_ids: Tensor: (64, 32, 20)
-    # attention_mask: Tensor: (64, 32, 20)
-    # BROWSED_TOKENS
-    # input_ids: Tensor: (64, 4, 20)
-    # attention_mask: Tensor: (64, 4, 20)
-    return _candidate_tokens, _clicked_tokens, _browsed_tokens
 
 
 class OheadlineDataset(Dataset):
@@ -86,10 +48,10 @@ class OheadlineDataset(Dataset):
             "monologg/koelectra-base-v3-discriminator"
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.user_ids)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> tuple:
         user_id = self.user_ids[index]
         user_data = self.user_data_groups[user_id]
 
