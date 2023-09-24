@@ -1,10 +1,9 @@
-FROM pytorch/pytorch:latest-cuda
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 
-WORKDIR /app
+COPY requirements.txt /opt/nrms/requirements.txt
+RUN pip install -r /opt/nrms/requirements.txt
 
-COPY . /app
-
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+WORKDIR /opt/nrms
+COPY . /opt/nrms
 
 CMD ["python", "train.py"]
