@@ -107,3 +107,10 @@ if __name__ == "__main__":
     dataframe = pd.read_csv(directories.unittest_dataset_csv)
     dataset = OheadlineDataset(dataframe)
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+    for batch in dataloader:
+        candidate, clicked, browsed = batch
+        print(candidate)
+        print(clicked)
+        print(browsed)
+        break
