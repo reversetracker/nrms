@@ -28,10 +28,10 @@ ENCODER_DIM = 128  # encoder dimension
 
 
 def main():
-    wandb_logger = WandbLogger()
     wandb.init(project="nrms")
+    wandb_logger = WandbLogger()
 
-    dataframe = pd.read_csv(directories.train_dataset_csv)
+    dataframe = pd.read_csv(directories.unittest_dataset_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
     train_size = int(0.94 * len(dataset))
