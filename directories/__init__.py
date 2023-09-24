@@ -22,6 +22,8 @@ queries = project.joinpath("queries.sql")
 
 tests = project.joinpath("tests")
 
-train_dataset_csv = project.joinpath("bigquery_results_20230920.csv")
+csv = project.joinpath("csv")
 
-unittest_dataset_csv = tests.joinpath("test_dataset.csv")
+train_dataset_csv = csv.joinpath("train_dataset_20230920.csv")
+
+unittest_dataset_csv = csv.joinpath("test_dataset_20230920.csv")

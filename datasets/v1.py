@@ -24,7 +24,7 @@ def generate_dataset():
         return has_viewed_true_count > 2 and has_viewed_false_count > 4
 
     df = df.groupby("user_id").filter(only_active_users)
-    df.to_csv("bigquery_results_20230920.csv", index=False)
+    df.to_csv(directories.train_dataset_csv, index=False)
 
 
 class OheadlineDataset(Dataset):
