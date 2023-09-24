@@ -8,7 +8,6 @@ import torch.nn.functional as F
 import wandb
 from matplotlib import pyplot as plt
 from torch import optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import ElectraModel
 
 logger = logging.getLogger(__name__)
@@ -332,6 +331,21 @@ class NRMS(pl.LightningModule):
         assert user_vector.shape == (users, encoder_dim)
         return user_vector
 
+    def forward_and_compute_loss(self, batch):
+        candidate, clicked, browsed = batch
+
+        scores, c_weights, a_weights = self.forward(
+            candidate["input_ids"],
+            candidate["attention_mask"],
+            clicked["input_ids"],
+            clicked["attention_mask"],
+            browsed["input_ids"],
+            browsed["attention_mask"]
+        )
+        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
+        loss = self.criterion(scores, labels)
+        return loss, c_weights, a_weights
+
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
         # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
@@ -344,65 +358,19 @@ class NRMS(pl.LightningModule):
         }
 
     def training_step(self, batch, batch_idx):
-        candidate, clicked, browsed = batch
-
-        # CANDIDATE
-        candidate_input_ids = candidate["input_ids"]
-        candidate_attention_mask = candidate["attention_mask"]
-
-        # CLICKED
-        clicked_input_ids = clicked["input_ids"]
-        clicked_attention_mask = clicked["attention_mask"]
-
-        # BROWSED
-        browsed_input_ids = browsed["input_ids"]
-        browsed_attention_mask = browsed["attention_mask"]
-
-        scores, _, __ = self.forward(
-            candidate_input_ids,
-            candidate_attention_mask,
-            clicked_input_ids,
-            clicked_attention_mask,
-            browsed_input_ids,
-            browsed_attention_mask,
-        )
-        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
-        loss = self.criterion(scores, labels)
+        loss, _, __ = self.forward_and_compute_loss(batch)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        candidate, clicked, browsed = batch
-
-        # CANDIDATE
-        candidate_input_ids = candidate["input_ids"]
-        candidate_attention_mask = candidate["attention_mask"]
-
-        # CLICKED
-        clicked_input_ids = clicked["input_ids"]
-        clicked_attention_mask = clicked["attention_mask"]
-
-        # BROWSED
-        browsed_input_ids = browsed["input_ids"]
-        browsed_attention_mask = browsed["attention_mask"]
-
-        scores, c_weights, a_weights = self.forward(
-            candidate_input_ids,
-            candidate_attention_mask,
-            clicked_input_ids,
-            clicked_attention_mask,
-            browsed_input_ids,
-            browsed_attention_mask,
-        )
-        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
-        loss = self.criterion(scores, labels)
+        loss, c_weights, a_weights = self.forward_and_compute_loss(batch)
 
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
 
-        # attention visualization logging here..
+        # Attention visualization logging
         fig, ax = plt.subplots(figsize=(10, 10))
         sns.heatmap(c_weights[0].cpu().detach().numpy(), ax=ax, cmap="viridis")
         ax.set_title("Attention Weights")
@@ -415,46 +383,19 @@ class NRMS(pl.LightningModule):
         )
         plt.close(fig)
 
-        # additive softmax_results visualization logging
+        # Additive softmax_results visualization logging
         fig, ax = plt.subplots(figsize=(10, 10))
         sns.heatmap(a_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
         ax.set_title("Additive Weights")
         wandb.log(
-            {
-                "additive_softmax": [
-                    wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}"),
-                ]
-            }
+            {"additive_softmax": [wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")]}
         )
         plt.close(fig)
 
         return {"val_loss": loss}
 
     def test_step(self, batch, batch_idx):
-        candidate, clicked, browsed = batch
-
-        # CANDIDATE
-        candidate_input_ids = candidate["input_ids"]
-        candidate_attention_mask = candidate["attention_mask"]
-
-        # CLICKED
-        clicked_input_ids = clicked["input_ids"]
-        clicked_attention_mask = clicked["attention_mask"]
-
-        # BROWSED
-        browsed_input_ids = browsed["input_ids"]
-        browsed_attention_mask = browsed["attention_mask"]
-
-        scores, c_weights, a_weights = self.forward(
-            candidate_input_ids,
-            candidate_attention_mask,
-            clicked_input_ids,
-            clicked_attention_mask,
-            browsed_input_ids,
-            browsed_attention_mask,
-        )
-        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
-        loss = self.criterion(scores, labels)
+        loss, _, __ = self.forward_and_compute_loss(batch)
 
         self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.testing_step_outputs.append(loss)

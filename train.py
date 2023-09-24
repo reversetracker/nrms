@@ -1,8 +1,9 @@
 import pandas as pd
 import pytorch_lightning as pl
+import torch
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 import datasets.v1
 import directories
@@ -33,10 +34,10 @@ def main():
     dataframe = pd.read_csv(directories.train_dataset_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
-    train_size = int(0.90 * len(dataset))
-    val_size = int(0.05 * len(dataset))
+    train_size = int(0.94 * len(dataset))
+    val_size = int(0.03 * len(dataset))
     test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(
+    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
         dataset, [train_size, val_size, test_size]
     )
 
