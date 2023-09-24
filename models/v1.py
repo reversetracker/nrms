@@ -1,14 +1,14 @@
 import logging
 
 import pytorch_lightning as pl
-import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-from matplotlib import pyplot as plt
 from torch import optim
-from transformers import ElectraModel
+from transformers import ElectraModel, BatchEncoding
+
+import utils
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +340,7 @@ class NRMS(pl.LightningModule):
             clicked["input_ids"],
             clicked["attention_mask"],
             browsed["input_ids"],
-            browsed["attention_mask"]
+            browsed["attention_mask"],
         )
         labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
         loss = self.criterion(scores, labels)
@@ -357,44 +357,33 @@ class NRMS(pl.LightningModule):
             # },
         }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: BatchEncoding, batch_idx: int):
         loss, _, __ = self.forward_and_compute_loss(batch)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.training_step_outputs.append(loss)
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+    def validation_step(self, batch: BatchEncoding, batch_idx: int):
         loss, c_weights, a_weights = self.forward_and_compute_loss(batch)
 
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
 
         # Attention visualization logging
-        fig, ax = plt.subplots(figsize=(10, 10))
-        sns.heatmap(c_weights[0].cpu().detach().numpy(), ax=ax, cmap="viridis")
-        ax.set_title("Attention Weights")
-        wandb.log(
-            {
-                "attention_weights": [
-                    wandb.Image(fig, caption=f"Attention Weights Batch-{batch_idx}")
-                ]
-            }
-        )
-        plt.close(fig)
+        title = "Attention Weights"
+        caption = f"{title} Batch-{batch_idx}"
+        fig = utils.plot_2d_weights(weights=c_weights[0], title=title)
+        wandb.log({"attention_weights": [wandb.Image(fig, caption=caption)]})
 
         # Additive softmax_results visualization logging
-        fig, ax = plt.subplots(figsize=(10, 10))
-        sns.heatmap(a_weights.cpu().detach().numpy(), ax=ax, cmap="viridis")
-        ax.set_title("Additive Weights")
-        wandb.log(
-            {"additive_softmax": [wandb.Image(fig, caption=f"Additive Softmax Batch-{batch_idx}")]}
-        )
-        plt.close(fig)
-
+        title = "Additive Softmax"
+        caption = f"{title} Batch-{batch_idx}"
+        fig = utils.plot_2d_weights(weights=a_weights, title=title)
+        wandb.log({"additive_softmax": [wandb.Image(fig, caption=caption)]})
         return {"val_loss": loss}
 
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch: BatchEncoding, batch_idx: int):
         loss, _, __ = self.forward_and_compute_loss(batch)
 
         self.log("test_loss", loss, on_step=True, on_epoch=True, logger=True)
