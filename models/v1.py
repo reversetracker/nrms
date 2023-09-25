@@ -319,19 +319,23 @@ class NRMS(pl.LightningModule):
         return user_vector
 
     def forward_and_compute_loss(self, batch: BatchEncoding):
-        clicked_tokens, label_tokens, labels = batch
+        clicked_tokens, labeled_tokens, labels = batch
 
         scores, c_weights, a_weights = self.forward(
             clicked_ids=clicked_tokens["input_ids"],
             clicked_attention_mask=clicked_tokens["attention_mask"],
-            labeled_ids=label_tokens["input_ids"],
-            labeled_attention_mask=label_tokens["attention_mask"],
+            labeled_ids=labeled_tokens["input_ids"],
+            labeled_attention_mask=labeled_tokens["attention_mask"],
         )
+
+        assert labels.shape == (scores.shape[0], 1)
+        labels = labels.squeeze(1).long()
+
         loss = self.criterion(scores, labels)
         return loss, c_weights, a_weights
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=5e-4, weight_decay=1e-5)
         # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
