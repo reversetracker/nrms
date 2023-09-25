@@ -370,17 +370,19 @@ class NRMS(pl.LightningModule):
         self.log("val_loss", loss, on_step=True, on_epoch=True, logger=True)
         self.validating_step_outputs.append(loss)
 
-        # Attention visualization logging
-        title = "Attention Weights"
-        caption = f"{title} Batch-{batch_idx}"
-        fig = utils.plot_2d_weights(weights=c_weights[0], title=title)
-        wandb.log({"attention_weights": [wandb.Image(fig, caption=caption)]})
+        if batch_idx % 3 == 0:
+            # Attention visualization logging
+            title = "Attention Weights"
+            caption = f"{title} Batch-{batch_idx}"
+            fig = utils.plot_2d_weights(weights=c_weights[0], title=title)
+            wandb.log({"attention_weights": [wandb.Image(fig, caption=caption)]})
 
-        # Additive softmax_results visualization logging
-        title = "Additive Softmax"
-        caption = f"{title} Batch-{batch_idx}"
-        fig = utils.plot_2d_weights(weights=a_weights, title=title)
-        wandb.log({"additive_softmax": [wandb.Image(fig, caption=caption)]})
+            # Additive softmax_results visualization logging
+            title = "Additive Softmax"
+            caption = f"{title} Batch-{batch_idx}"
+            fig = utils.plot_2d_weights(weights=a_weights, title=title)
+            wandb.log({"additive_softmax": [wandb.Image(fig, caption=caption)]})
+
         return {"val_loss": loss}
 
     def test_step(self, batch: BatchEncoding, batch_idx: int):
