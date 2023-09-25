@@ -33,28 +33,20 @@ def sample_dataloader(sample_dataset):
 def test_forward_user_encoder(sample_dataloader):
     nrms = models.v1.NRMS()
 
-    candidate, clicked, browsed = next(sample_dataloader.__iter__())
-
-    # CANDIDATE
-    candidate_input_ids = candidate["input_ids"]
-    candidate_attention_mask = candidate["attention_mask"]
-
-    candidate_embeddings = nrms.forward_user_encoder(candidate_input_ids, candidate_attention_mask)
-    # (users, encoder_dim)
-    assert candidate_embeddings.shape == (64, 128)
+    clicked_tokens, labeled_tokens, _ = next(sample_dataloader.__iter__())
 
     # CLICKED
-    clicked_input_ids = clicked["input_ids"]
-    clicked_attention_mask = clicked["attention_mask"]
+    clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
 
     clicked_embeddings = nrms.forward_user_encoder(clicked_input_ids, clicked_attention_mask)
     # (users, encoder_dim)
     assert clicked_embeddings.shape == (64, 128)
 
-    # BROWSED
-    browsed_input_ids = browsed["input_ids"]
-    browsed_attention_mask = browsed["attention_mask"]
+    # LABELED TOKENS
+    labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
 
-    browsed_embeddings = nrms.forward_user_encoder(browsed_input_ids, browsed_attention_mask)
+    labeled_embeddings = nrms.forward_user_encoder(labeled_input_ids, labeled_attention_mask)
     # (users, encoder_dim)
-    assert browsed_embeddings.shape == (64, 128)
+    assert labeled_embeddings.shape == (64, 128)

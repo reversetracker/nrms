@@ -33,27 +33,21 @@ def sample_dataloader(sample_dataset):
 def test_nrms_forward(sample_dataloader):
     nrms = models.v1.NRMS()
 
-    candidate, clicked, browsed = next(sample_dataloader.__iter__())
-
-    # CANDIDATE
-    candidate_input_ids = candidate["input_ids"]
-    candidate_attention_mask = candidate["attention_mask"]
+    clicked_tokens, labeled_tokens, _ = next(sample_dataloader.__iter__())
 
     # CLICKED
-    clicked_input_ids = clicked["input_ids"]
-    clicked_attention_mask = clicked["attention_mask"]
+    clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
 
     # BROWSED
-    browsed_input_ids = browsed["input_ids"]
-    browsed_attention_mask = browsed["attention_mask"]
+    labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
 
     scores, c_weights, a_weights = nrms.forward(
-        candidate_input_ids,
-        candidate_attention_mask,
-        clicked_input_ids,
-        clicked_attention_mask,
-        browsed_input_ids,
-        browsed_attention_mask,
+        clicked_ids=clicked_input_ids,
+        clicked_attention_mask=clicked_attention_mask,
+        labeled_ids=labeled_input_ids,
+        labeled_attention_mask=labeled_attention_mask,
     )
 
     assert scores.shape == (64, 5)

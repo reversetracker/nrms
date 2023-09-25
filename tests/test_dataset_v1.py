@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 import pandas as pd
+import torch
 from torch.utils.data import DataLoader
+from transformers import BatchEncoding
 
 import directories
 from datasets.v1 import OheadlineDataset
@@ -18,44 +20,19 @@ def test_dataset_length(sample_dataset):
     assert len(sample_dataset) == 128  # 128 개의 고유한 사용자
 
 
-def test_get_item_structure(sample_dataset):
-    data = sample_dataset[0]
-    assert isinstance(data, tuple)
-    assert len(data) == 3  # candidate_tokens, clicked_tokens, browsed_tokens
-
-    # 데이터 구조 확인
-    for tokens in data:
-        assert "input_ids" in tokens
-        assert "attention_mask" in tokens
-
-
 def test_dataloader_iteration(sample_dataset):
-    dataloader = DataLoader(sample_dataset, batch_size=32, shuffle=True)
-
-    for batch in dataloader:
-        assert len(batch) == 3  # candidate_tokens, clicked_tokens, browsed_tokens
-
-        for tokens in batch:
-            assert "input_ids" in tokens
-            assert "attention_mask" in tokens
-
-
-def test_dataloader_batch_shape(sample_dataset):
     dataloader = DataLoader(sample_dataset, batch_size=64, shuffle=True)
 
-    # Expected shapes
-    # (users, articles, words)
-    expected_candidate = {"input_ids": (64, 1, 20), "attention_mask": (64, 1, 20)}
-    expected_clicked = {"input_ids": (64, 32, 20), "attention_mask": (64, 32, 20)}
-    expected_browsed = {"input_ids": (64, 4, 20), "attention_mask": (64, 4, 20)}
+    for batch in dataloader:
+        clicked_tokens, labeled_tokens, labels = batch
 
-    # Verify shapes for each token set
-    candidate, clicked, browsed = next(dataloader.__iter__())
-    assert tuple(candidate["input_ids"].shape) == expected_candidate["input_ids"]
-    assert tuple(candidate["attention_mask"].shape) == expected_candidate["attention_mask"]
+        assert isinstance(clicked_tokens, BatchEncoding)
+        assert clicked_tokens.input_ids.shape == torch.Size([64, 32, 20])
+        assert clicked_tokens.attention_mask.shape == torch.Size([64, 32, 20])
 
-    assert tuple(clicked["input_ids"].shape) == expected_clicked["input_ids"]
-    assert tuple(clicked["attention_mask"].shape) == expected_clicked["attention_mask"]
+        assert isinstance(labeled_tokens, BatchEncoding)
+        assert labeled_tokens.input_ids.shape == torch.Size([64, 5, 20])
+        assert labeled_tokens.attention_mask.shape == torch.Size([64, 5, 20])
 
-    assert tuple(browsed["input_ids"].shape) == expected_browsed["input_ids"]
-    assert tuple(browsed["attention_mask"].shape) == expected_browsed["attention_mask"]
+        assert isinstance(labels, torch.Tensor)
+        assert labels.shape == torch.Size([64, 1])

@@ -30,34 +30,25 @@ def sample_dataloader(sample_dataset):
     return DataLoader(sample_dataset, batch_size=64, shuffle=True)
 
 
-def test_forward_doc_encoder(sample_dataloader):
-    candidate, clicked, browsed = next(sample_dataloader.__iter__())
-    # candidate shape: (64, 1, 20)
-    # clicked shape: (64, 32, 20)
-    # browsed shape: (64, 4, 20)
+def test_forward_doc_encoder_with_clicked_tokens(sample_dataloader):
+    clicked_tokens, _, __ = next(sample_dataloader.__iter__())
 
-    candidate_input_ids = candidate["input_ids"]
-    candidate_attention_mask = candidate["attention_mask"]
+    clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
 
     nrms = models.v1.NRMS()
+    embeddings = nrms.forward_doc_encoder(clicked_input_ids, clicked_attention_mask)
 
-    embeddings = nrms.forward_doc_encoder(candidate_input_ids, candidate_attention_mask)
+    assert embeddings.shape == (64, 32, 20, 768), "Invalid shape for embeddings"
 
-    # (users * titles, seq_length, electra_dim)
-    assert embeddings.shape == (64, 1, 20, 768), "Invalid shape for embeddings"
 
-    clicked_input_ids = clicked["input_ids"]
-    clicked_attention_mask = clicked["attention_mask"]
+def test_forward_doc_encoder_with_labeled_tokens(sample_dataloader):
+    _, labeled_tokens, __ = next(sample_dataloader.__iter__())
 
-    clicked_embeddings = nrms.forward_doc_encoder(clicked_input_ids, clicked_attention_mask)
+    labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
 
-    # (users, titles, seq_length, electra_dim)
-    assert clicked_embeddings.shape == (64, 32, 20, 768), "Invalid shape for clicked_embeddings"
+    nrms = models.v1.NRMS()
+    embeddings = nrms.forward_doc_encoder(labeled_input_ids, labeled_attention_mask)
 
-    browsed_input_ids = browsed["input_ids"]
-    browsed_attention_mask = browsed["attention_mask"]
-
-    browsed_embeddings = nrms.forward_doc_encoder(browsed_input_ids, browsed_attention_mask)
-
-    # (users, titles, seq_length, electra_dim)
-    assert browsed_embeddings.shape == (64, 4, 20, 768), "Invalid shape for browsed_embeddings"
+    assert embeddings.shape == (64, 5, 20, 768), "Invalid shape for embeddings"

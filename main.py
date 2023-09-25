@@ -31,27 +31,21 @@ sample_dataloader = DataLoader(
 nrms = models.v1.NRMS()
 
 for batch in sample_dataloader:
-    candidate, clicked, browsed = batch
-
-    # CANDIDATE
-    candidate_input_ids = candidate["input_ids"]
-    candidate_attention_mask = candidate["attention_mask"]
+    clicked_tokens, labeled_tokens, _ = batch
 
     # CLICKED
-    clicked_input_ids = clicked["input_ids"]
-    clicked_attention_mask = clicked["attention_mask"]
+    clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
 
-    # BROWSED
-    browsed_input_ids = browsed["input_ids"]
-    browsed_attention_mask = browsed["attention_mask"]
+    # LABELED
+    labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
 
     scores, c_weights, a_weights = nrms.forward(
-        candidate_input_ids,
-        candidate_attention_mask,
         clicked_input_ids,
         clicked_attention_mask,
-        browsed_input_ids,
-        browsed_attention_mask,
+        labeled_input_ids,
+        labeled_attention_mask,
     )
 
     assert scores.shape == (64, 5)
