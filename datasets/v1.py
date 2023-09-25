@@ -21,7 +21,7 @@ def generate_dataset():
     def only_active_users(group):
         has_viewed_true_count = group[group["has_viewed"] == True].shape[0]
         has_viewed_false_count = group[group["has_viewed"] == False].shape[0]
-        return has_viewed_true_count > 2 and has_viewed_false_count > 4
+        return has_viewed_true_count > 5 and has_viewed_false_count > 10
 
     df = df.groupby("user_id").filter(only_active_users)
     df.to_csv(directories.train_dataset_csv, index=False)
