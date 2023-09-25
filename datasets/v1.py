@@ -94,7 +94,7 @@ class OheadlineDataset(Dataset):
             padding="max_length",
         )
 
-        label_tokens = self.tokenizer(
+        labeled_tokens = self.tokenizer(
             label_texts,
             return_tensors="pt",
             truncation=True,
@@ -104,7 +104,7 @@ class OheadlineDataset(Dataset):
 
         cross_entropy_labels = torch.Tensor([random_index])
 
-        return clicked_tokens, label_tokens, cross_entropy_labels
+        return clicked_tokens, labeled_tokens, cross_entropy_labels
 
 
 if __name__ == "__main__":
@@ -113,8 +113,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
     for batch in dataloader:
-        clicked_tokens, label_tokens, labels = batch
+        clicked_tokens, labeled_tokens, labels = batch
         print(clicked_tokens)
-        print(label_tokens)
+        print(labeled_tokens)
         print(labels)
         break
