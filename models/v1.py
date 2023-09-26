@@ -335,7 +335,7 @@ class NRMS(pl.LightningModule):
         return loss, c_weights, a_weights
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=5e-4, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=2e-4, weight_decay=1e-5)
         # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
