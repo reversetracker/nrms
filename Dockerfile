@@ -4,8 +4,8 @@ COPY requirements.txt /opt/nrms/requirements.txt
 RUN pip install -r /opt/nrms/requirements.txt
 
 COPY csv /opt/nrms/csv
+COPY . /opt/nrms
 
 WORKDIR /opt/nrms
-COPY . /opt/nrms
 
 CMD ["python", "train.py"]
