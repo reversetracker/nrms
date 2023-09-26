@@ -248,9 +248,8 @@ class NRMS(pl.LightningModule):
         # shape: (users, embed_size)
 
         # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 를 얻습니다.
-        scores = torch.bmm(news_vectors, user_vectors.unsqueeze(2)).squeeze(
-            2
-        )  # shape: (users, 5)
+        scores = torch.bmm(news_vectors, user_vectors.unsqueeze(2)).squeeze(2)
+        # shape: (users, 5)
 
         return scores, c_weights, a_weights
 
