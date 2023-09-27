@@ -1,5 +1,5 @@
 APP_NAME      := nrms
-VERSION       := batch_128_v2
+VERSION       := softmax_mask_128_batch_v4
 REGION        := ap-northeast-2
 ECR           := 533448761297.dkr.ecr.$(REGION).amazonaws.com
 DOCKER_REPO   := $(ECR)/$(APP_NAME):$(VERSION)

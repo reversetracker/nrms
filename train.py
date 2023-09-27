@@ -78,7 +78,7 @@ def main():
     checkpoint_callback = ModelCheckpoint(
         dirpath="checkpoints",
         filename="{epoch}-{val_loss:.2f}",
-        save_top_k=-1,  # save all epochs
+        save_top_k=5,
         verbose=True,
         monitor="val_loss",
         mode="min",
@@ -86,7 +86,7 @@ def main():
 
     # Define trainer and fit model
     trainer = pl.Trainer(
-        max_epochs=100,
+        max_epochs=1000,
         log_every_n_steps=1,
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
