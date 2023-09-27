@@ -6,11 +6,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torch import optim
+from torch.autograd import Variable
 from transformers import ElectraModel, BatchEncoding
 
 import utils
 
 logger = logging.getLogger(__name__)
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int = 512, dropout: float = .1, max_len: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(dropout)
+
+        # Compute the positional encodings in log space
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * -(torch.log(torch.Tensor([10000.0])) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + Variable(self.pe[:, :x.size(1)], requires_grad=False)
+        return self.dropout(x)
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -367,7 +387,7 @@ class NRMS(pl.LightningModule):
             # Additive softmax_results visualization logging
             title = "Additive Softmax"
             caption = f"{title} Batch-{batch_idx}"
-            fig = utils.plot_2d_weights(weights=a_weights, title=title)
+            fig = utils.plot_2d_weights(weights=a_weights[:20], title=title)
             wandb.log({"additive_softmax": [wandb.Image(fig, caption=caption)]})
 
         return {"val_loss": loss}
