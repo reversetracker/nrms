@@ -135,15 +135,16 @@ class NewsEncoder(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        key_padding_masks: torch.Tensor = None,
+        key_padding_mask: torch.Tensor = None,
+        softmax_padding_mask: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         logger.debug(f"x shape: {x.shape}")
 
-        assert key_padding_masks.shape == (x.shape[0], x.shape[1])
+        assert key_padding_mask.shape == (x.shape[0], x.shape[1])
 
         # Multi-head attention
         context, context_weights = self.multi_head_attention(
-            x, x, x, key_padding_mask=key_padding_masks
+            x, x, x, key_padding_mask=key_padding_mask
         )
         logger.debug(f"context shape: {context.shape}")
 
@@ -154,6 +155,8 @@ class NewsEncoder(nn.Module):
 
         # Additive attention
         additive_weights = self.additive_attention(context)
+        if softmax_padding_mask is not None:
+            additive_weights = additive_weights * softmax_padding_mask
 
         # Weighted context by the attention weights
         out = torch.sum(additive_weights.unsqueeze(-1) * transformed_context, dim=1)
@@ -239,37 +242,56 @@ class NRMS(pl.LightningModule):
 
     def forward(
         self,
-        clicked_ids: torch.Tensor,
-        clicked_attention_mask: torch.Tensor,
-        labeled_ids: torch.Tensor,
-        labeled_attention_mask: torch.Tensor,
+        clicked_ids: torch.Tensor = None,
+        clicked_key_padding_mask: torch.Tensor = None,
+        clicked_softmax_padding_mask: torch.Tensor = None,
+        labeled_ids: torch.Tensor = None,
+        labeled_key_padding_mask: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass for the NRMS model.
 
         Args:
             clicked_ids (torch.Tensor): Input token ids for the clicked news. (users, titles, seq_length)
-            clicked_attention_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
+            clicked_key_padding_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
+            clicked_softmax_padding_mask (torch.Tensor): Softmax padding mask for the clicked news. (users, titles, seq_length)
             labeled_ids (torch.Tensor): Input token ids for the labeled news. (users, titles, seq_length)
-            labeled_attention_mask (torch.Tensor): Attention mask for the labeled news. (users, titles, seq_length)
+            labeled_key_padding_mask (torch.Tensor): Attention mask for the labeled news. (users, titles, seq_length)
         Returns:
-            torch.Tensor: Scores for each candidate news. (users, 5)
+            torch.Tensor: Scores for each candidate news. (users, K)
             torch.Tensor: Candidate Context Weights.
             torch.Tensor: Candidate Additive Weights.
         """
 
+        if clicked_ids is None:
+            raise ValueError("clicked_ids must be provided.")
+
+        if clicked_key_padding_mask is None:
+            raise ValueError("clicked_key_padding_mask must be provided.")
+
+        if labeled_ids is None:
+            raise ValueError("labeled_ids must be provided.")
+
+        if labeled_key_padding_mask is None:
+            raise ValueError("labeled_key_padding_mask must be provided.")
+
         # labeled
         news_vectors, c_weights, a_weights = self.forward_news_encoder(
-            labeled_ids, labeled_attention_mask
+            input_ids=labeled_ids,
+            key_padding_mask=labeled_key_padding_mask
         )
-        # shape: (users, 5, encoder_dim)
+        # shape: (users, K + 1, encoder_dim)
 
         # clicked
-        user_vectors = self.forward_user_encoder(clicked_ids, clicked_attention_mask)
+        user_vectors = self.forward_user_encoder(
+            input_ids=clicked_ids,
+            key_padding_mask=clicked_key_padding_mask,
+            softmax_padding_mask=clicked_softmax_padding_mask,
+        )
         # shape: (users, embed_size)
 
-        # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 를 얻습니다.
+        # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 계산
         scores = torch.bmm(news_vectors, user_vectors.unsqueeze(2)).squeeze(2)
-        # shape: (users, 5)
+        # shape: (users, K + 1)
 
         return scores, c_weights, a_weights
 
@@ -295,39 +317,60 @@ class NRMS(pl.LightningModule):
         embeddings = embeddings.view(users, titles, seq_length, self.input_dim)
         return embeddings  # shape: (users, titles, seq_length, embed_size)
 
-    def forward_news_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+    def forward_news_encoder(
+        self,
+        input_ids: torch.Tensor,
+        key_padding_mask: torch.Tensor,
+        softmax_padding_mask: torch.Tensor = None,
+    ):
         """Forward pass for the news encoder.
 
         Args:
             input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
-            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
+            key_padding_mask (torch.Tensor): Key Padding mask. (users, titles, seq_length)
+            softmax_padding_mask (torch.Tensor): Softmax padding mask. (users, titles, seq_length)
 
         Returns:
             torch.Tensor: News embeddings. (users, titles, encoder_dim)
         """
 
-        embeddings = self.forward_doc_encoder(input_ids, attention_mask)
+        embeddings = self.forward_doc_encoder(input_ids, key_padding_mask)
         users, titles, seq_length, embed_size = embeddings.shape
 
         embeddings = embeddings.view(users * titles, seq_length, embed_size)
-        key_padding_mask = attention_mask.view(users * titles, seq_length)
-        key_padding_mask = ~key_padding_mask.bool()
+        key_padding_mask = key_padding_mask.view(users * titles, seq_length)
+        if softmax_padding_mask is not None:
+            softmax_padding_mask = softmax_padding_mask.view(users * titles, seq_length)
 
-        news_vectors, c_weights, a_weights = self.news_encoder(embeddings, key_padding_mask)
+        news_vectors, c_weights, a_weights = self.news_encoder(
+            embeddings,
+            key_padding_mask=key_padding_mask,
+            softmax_padding_mask=softmax_padding_mask,
+        )
         news_vectors = news_vectors.view(users, titles, self.encoder_dim)
         return news_vectors, c_weights, a_weights
 
-    def forward_user_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+    def forward_user_encoder(
+        self,
+        input_ids: torch.Tensor,
+        key_padding_mask: torch.Tensor,
+        softmax_padding_mask: torch.Tensor = None,
+    ):
         """Forward pass for the user encoder.
 
         Args:
             input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
-            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
+            key_padding_mask (torch.Tensor): Key padding mask. (users, titles, seq_length)
+            softmax_padding_mask (torch.Tensor): Softmax padding mask. (users, titles, seq_length)
 
         Returns:
             torch.Tensor: User embeddings. (users, encoder_dim)
         """
-        news_vectors, _, __ = self.forward_news_encoder(input_ids, attention_mask)
+        news_vectors, _, __ = self.forward_news_encoder(
+            input_ids=input_ids,
+            key_padding_mask=key_padding_mask,
+            softmax_padding_mask=softmax_padding_mask,
+        )
         users, titles, encoder_dim = news_vectors.shape
 
         # FORWARD HERE
@@ -342,9 +385,10 @@ class NRMS(pl.LightningModule):
 
         scores, c_weights, a_weights = self.forward(
             clicked_ids=clicked_tokens["input_ids"],
-            clicked_attention_mask=clicked_tokens["attention_mask"],
+            clicked_key_padding_mask=clicked_tokens["key_padding_mask"],
+            clicked_softmax_padding_mask=clicked_tokens["softmax_padding_mask"],
             labeled_ids=labeled_tokens["input_ids"],
-            labeled_attention_mask=labeled_tokens["attention_mask"],
+            labeled_key_padding_mask=labeled_tokens["key_padding_mask"],
         )
 
         assert labels.shape == (scores.shape[0], 1)

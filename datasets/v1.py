@@ -86,6 +86,7 @@ class OheadlineDataset(Dataset):
         random_index = random.randint(1, self.K - 1)
         label_texts[0], label_texts[random_index] = label_texts[random_index], label_texts[0]
 
+        # CLICKED DATA 에 key_padding_mask, softmax_padding_mask 추가
         clicked_tokens = self.tokenizer(
             clicked_texts,
             return_tensors="pt",
@@ -93,7 +94,18 @@ class OheadlineDataset(Dataset):
             max_length=self.sequence_size,
             padding="max_length",
         )
+        key_padding_mask = ~clicked_tokens["attention_mask"].bool()
+        rows, features = key_padding_mask.shape
+        false_counts = (key_padding_mask == False).sum(dim=1).reshape(rows, 1)
+        softmax_padding_mask = torch.where(
+            false_counts <= 2,  # 2, 3, 0, 0, 0
+            torch.zeros_like(torch.Tensor(features), dtype=torch.int),
+            torch.ones_like(torch.Tensor(features), dtype=torch.int),
+        )
+        clicked_tokens["key_padding_mask"] = key_padding_mask
+        clicked_tokens["softmax_padding_mask"] = softmax_padding_mask
 
+        # LABELED DATA 에 key_padding_mask 추가
         labeled_tokens = self.tokenizer(
             label_texts,
             return_tensors="pt",
@@ -101,6 +113,8 @@ class OheadlineDataset(Dataset):
             max_length=self.sequence_size,
             padding="max_length",
         )
+        key_padding_mask = ~labeled_tokens["attention_mask"].bool()
+        labeled_tokens["key_padding_mask"] = key_padding_mask
 
         cross_entropy_labels = torch.Tensor([random_index])
 

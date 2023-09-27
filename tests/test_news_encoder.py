@@ -37,20 +37,24 @@ def test_forward_news_encoder(sample_dataloader):
 
     # CLICKED
     clicked_input_ids = clicked_tokens["input_ids"]
-    clicked_attention_mask = clicked_tokens["attention_mask"]
+    clicked_key_padding_mask = clicked_tokens["key_padding_mask"]
+    clicked_softmax_padding_mask = clicked_tokens["softmax_padding_mask"]
 
     clicked_embeddings, _, __ = nrms.forward_news_encoder(
-        clicked_input_ids, clicked_attention_mask
+        input_ids=clicked_input_ids,
+        key_padding_mask=clicked_key_padding_mask,
+        softmax_padding_mask=clicked_softmax_padding_mask,
     )
     # (users, titles, encoder_dim)
     assert clicked_embeddings.shape == (64, 32, 128)
 
-    # CANDIDATE
-    candidate_input_ids = labeled_tokens["input_ids"]
-    candidate_attention_mask = labeled_tokens["attention_mask"]
+    # LABELED
+    labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_key_padding_mask = labeled_tokens["key_padding_mask"]
 
-    candidate_embeddings, _, __ = nrms.forward_news_encoder(
-        candidate_input_ids, candidate_attention_mask
+    labeled_embeddings, _, __ = nrms.forward_news_encoder(
+        input_ids=labeled_input_ids,
+        key_padding_mask=labeled_key_padding_mask,
     )
     # (users, titles, encoder_dim)
-    assert candidate_embeddings.shape == (64, 5, 128)
+    assert labeled_embeddings.shape == (64, 5, 128)
