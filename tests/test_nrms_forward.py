@@ -51,5 +51,5 @@ def test_nrms_forward(sample_dataloader):
     )
 
     assert scores.shape == (64, 5)
-    assert c_weights.shape == (64, 20, 20)
-    assert a_weights.shape == (64, 20)
+    assert c_weights.shape == (320, 20, 20)
+    assert a_weights.shape == (320, 20)
