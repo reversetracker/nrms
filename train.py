@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import pytorch_lightning as pl
 import torch
@@ -10,9 +12,12 @@ import directories
 import wandb
 from models.v1 import NRMS
 
-PARALLEL_NUM = 2
+os.environ["WANDB_API_KEY"] = "7290cd5cb94c29300893438a08b4b6aa844149f3"
 
-BATCH_SIZE = 64  # users
+
+PARALLEL_NUM = min(4, os.cpu_count())
+
+BATCH_SIZE = 128  # users
 
 TITLES = 64  # articles
 
@@ -31,7 +36,7 @@ def main():
     wandb.init(project="nrms")
     wandb_logger = WandbLogger()
 
-    dataframe = pd.read_csv(directories.unittest_dataset_csv)
+    dataframe = pd.read_csv(directories.train_dataset_csv)
     dataset = datasets.v1.OheadlineDataset(dataframe)
 
     train_size = int(0.94 * len(dataset))

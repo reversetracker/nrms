@@ -1,5 +1,5 @@
 APP_NAME      := nrms
-VERSION       := 1.0.0.rc1
+VERSION       := batch_128_v2
 REGION        := ap-northeast-2
 ECR           := 533448761297.dkr.ecr.$(REGION).amazonaws.com
 DOCKER_REPO   := $(ECR)/$(APP_NAME):$(VERSION)

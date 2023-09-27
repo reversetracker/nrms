@@ -219,53 +219,39 @@ class NRMS(pl.LightningModule):
 
     def forward(
         self,
-        candidate_ids: torch.Tensor,
-        candidate_attention_mask: torch.Tensor,
         clicked_ids: torch.Tensor,
         clicked_attention_mask: torch.Tensor,
-        browsed_ids: torch.Tensor,
-        browsed_attention_mask: torch.Tensor,
+        labeled_ids: torch.Tensor,
+        labeled_attention_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass for the NRMS model.
 
         Args:
-            candidate_ids (torch.Tensor): Input token ids for the candidate news. (users, titles, seq_length)
-            candidate_attention_mask (torch.Tensor): Attention mask for the candidate news. (users, titles, seq_length)
             clicked_ids (torch.Tensor): Input token ids for the clicked news. (users, titles, seq_length)
             clicked_attention_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
-            browsed_ids (torch.Tensor): Input token ids for the browsed news. (users, titles, seq_length)
-            browsed_attention_mask (torch.Tensor): Attention mask for the browsed news. (users, titles, seq_length)
-
+            labeled_ids (torch.Tensor): Input token ids for the labeled news. (users, titles, seq_length)
+            labeled_attention_mask (torch.Tensor): Attention mask for the labeled news. (users, titles, seq_length)
         Returns:
             torch.Tensor: Scores for each candidate news. (users, 5)
             torch.Tensor: Candidate Context Weights.
             torch.Tensor: Candidate Additive Weights.
         """
 
-        # candidate
-        candidate_news_vectors, c_c_weights, c_a_weights = self.forward_news_encoder(
-            candidate_ids, candidate_attention_mask
+        # labeled
+        news_vectors, c_weights, a_weights = self.forward_news_encoder(
+            labeled_ids, labeled_attention_mask
         )
-        # shape: (users, titles, seq_length, embed_size)
-
-        # browsed
-        browsed_news_vectors, _, __ = self.forward_news_encoder(browsed_ids, browsed_attention_mask)
-        # shape: (users, titles, seq_length, embed_size)
-
-        # clicked
-        clicked_user_vectors = self.forward_user_encoder(clicked_ids, clicked_attention_mask)
-        # shape: (users, embed_size)
-
-        # candidate (True) & browsed (False x 4) 를 합칩니다.
-        news_vectors = torch.cat([candidate_news_vectors, browsed_news_vectors], dim=1)
         # shape: (users, 5, encoder_dim)
 
-        # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 를 얻습니다.
-        scores = torch.bmm(news_vectors, clicked_user_vectors.unsqueeze(2)).squeeze(
-            2
-        )  # shape: (users, 5)
+        # clicked
+        user_vectors = self.forward_user_encoder(clicked_ids, clicked_attention_mask)
+        # shape: (users, embed_size)
 
-        return scores, c_c_weights, c_a_weights
+        # 각 뉴스와 사용자 벡터 간의 내적을 계산하여 scores 를 얻습니다.
+        scores = torch.bmm(news_vectors, user_vectors.unsqueeze(2)).squeeze(2)
+        # shape: (users, 5)
+
+        return scores, c_weights, a_weights
 
     def forward_doc_encoder(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
         """Forward pass for the document encoder.
@@ -324,30 +310,31 @@ class NRMS(pl.LightningModule):
         news_vectors, _, __ = self.forward_news_encoder(input_ids, attention_mask)
         users, titles, encoder_dim = news_vectors.shape
 
-        # forward here
+        # FORWARD HERE
         user_vector = self.user_encoder(news_vectors)
 
-        # user 가 읽은 기사가 모두 합쳐져서 벡터를 생성 하므로.. title 개수 차원이 merge 되어야 함
+        # USER 가 읽은 기사가 모두 합쳐져서 벡터를 생성 하므로.. TITLE 개수 차원이 merge 되어야 함
         assert user_vector.shape == (users, encoder_dim)
         return user_vector
 
-    def forward_and_compute_loss(self, batch):
-        candidate, clicked, browsed = batch
+    def forward_and_compute_loss(self, batch: BatchEncoding):
+        clicked_tokens, labeled_tokens, labels = batch
 
         scores, c_weights, a_weights = self.forward(
-            candidate["input_ids"],
-            candidate["attention_mask"],
-            clicked["input_ids"],
-            clicked["attention_mask"],
-            browsed["input_ids"],
-            browsed["attention_mask"],
+            clicked_ids=clicked_tokens["input_ids"],
+            clicked_attention_mask=clicked_tokens["attention_mask"],
+            labeled_ids=labeled_tokens["input_ids"],
+            labeled_attention_mask=labeled_tokens["attention_mask"],
         )
-        labels = torch.zeros(scores.shape[0], dtype=torch.long).to("mps")
+
+        assert labels.shape == (scores.shape[0], 1)
+        labels = labels.squeeze(1).long()
+
         loss = self.criterion(scores, labels)
         return loss, c_weights, a_weights
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=2e-4, weight_decay=1e-5)
         # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,

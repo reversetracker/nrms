@@ -1,6 +1,7 @@
 import random
 
 import pandas as pd
+import torch
 from google.oauth2.service_account import Credentials
 from torch.utils.data import Dataset, DataLoader
 from transformers import ElectraTokenizer
@@ -55,8 +56,8 @@ class OheadlineDataset(Dataset):
         user_id = self.user_ids[index]
         user_data = self.user_data_groups[user_id]
 
-        titles = user_data["title"].values.tolist()[:64]
-        has_viewed_list = user_data["has_viewed"].values.tolist()[:64]
+        titles = user_data["title"].values.tolist()
+        has_viewed_list = user_data["has_viewed"].values.tolist()
 
         assert len(titles) == len(has_viewed_list)
 
@@ -70,19 +71,20 @@ class OheadlineDataset(Dataset):
         random.shuffle(clicked_texts)
         random.shuffle(browsed_texts)
 
-        candidate_text, clicked_texts = clicked_texts[0], clicked_texts[1 : self.max_articles]
-        browsed_texts = browsed_texts[:4]
+        candidate_text = clicked_texts.pop(0)
+        clicked_texts = clicked_texts[: self.max_articles]
+        browsed_texts = browsed_texts[: self.K]
 
+        # ADD PADDINGS
+        # max_articles[32] 개를 채우지 못한 경우 '빈 문자열'을 패딩으로 채워서 32개의 기사로 만듬
         clicked_texts = clicked_texts + [""] * (self.max_articles - len(clicked_texts))
-        browsed_texts = (browsed_texts * (4 // len(browsed_texts)))[:4]
+        # K[4] 개를 채우지 못한 경우 '중복' 기사로 채움
+        browsed_texts = (browsed_texts * (self.K // len(browsed_texts)))[: self.K]
 
-        candidate_tokens = self.tokenizer(
-            [candidate_text],
-            return_tensors="pt",
-            truncation=True,
-            max_length=self.sequence_size,
-            padding="max_length",
-        )
+        # 1*P + K*N
+        label_texts = [candidate_text] + browsed_texts
+        random_index = random.randint(1, self.K - 1)
+        label_texts[0], label_texts[random_index] = label_texts[random_index], label_texts[0]
 
         clicked_tokens = self.tokenizer(
             clicked_texts,
@@ -92,15 +94,17 @@ class OheadlineDataset(Dataset):
             padding="max_length",
         )
 
-        browsed_tokens = self.tokenizer(
-            browsed_texts,
+        labeled_tokens = self.tokenizer(
+            label_texts,
             return_tensors="pt",
             truncation=True,
             max_length=self.sequence_size,
             padding="max_length",
         )
 
-        return candidate_tokens, clicked_tokens, browsed_tokens
+        cross_entropy_labels = torch.Tensor([random_index])
+
+        return clicked_tokens, labeled_tokens, cross_entropy_labels
 
 
 if __name__ == "__main__":
@@ -109,8 +113,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 
     for batch in dataloader:
-        candidate, clicked, browsed = batch
-        print(candidate)
-        print(clicked)
-        print(browsed)
+        clicked_tokens, labeled_tokens, labels = batch
+        print(clicked_tokens)
+        print(labeled_tokens)
+        print(labels)
         break
