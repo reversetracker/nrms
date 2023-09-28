@@ -10,6 +10,30 @@ poetry install
 pip install -r requirements.txt
 ```
 
+# Train Results
+
+## Additive Attention
+
+<p float="left">
+  <img src="./images/additive_attention_1.png" width="30%" />
+  <img src="./images/additive_attention_2.png" width="30%" /> 
+  <img src="./images/additive_attention_3.png" width="30%" />
+</p>
+
+## Attention
+
+<p float="left">
+  <img src="./images/attention_1.png" width="30%" />
+  <img src="./images/attention_2.png" width="30%" /> 
+  <img src="./images/attention_3.png" width="30%" />
+</p>
+
+## Validation Loss
+
+![Validation Loss](./images/val_loss.png)
+
+
+
 # NRMS Approach for News Recommendation
 
 ## 1. **News Encoder**
