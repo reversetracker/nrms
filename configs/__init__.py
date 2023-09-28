@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     sequence_size: int = 20
 
-    input_dim: int = 768
+    embed_dim: int = 768
 
     encoder_dim: int = 128
 
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     dropout: float = 0.2
 
     K: int = 4
+
+    wandb_api_key: str = ""
 
 
 settings = Settings()

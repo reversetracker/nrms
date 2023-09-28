@@ -76,9 +76,9 @@ class DocEncoder(nn.Module):
 class DeprecatedAdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
-    def __init__(self, input_dim: int = 768, output_dim: int = 128):
+    def __init__(self, embed_dim: int = 768, output_dim: int = 128):
         super(DeprecatedAdditiveAttention, self).__init__()
-        self.linear = nn.Linear(input_dim, output_dim, bias=True)
+        self.linear = nn.Linear(embed_dim, output_dim, bias=True)
         self.query = nn.Parameter(torch.randn(output_dim))
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
@@ -96,10 +96,10 @@ class DeprecatedAdditiveAttention(nn.Module):
 class AdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
-    def __init__(self, input_dim: int = 768, output_dim: int = 128, dropout: float = 0.2):
+    def __init__(self, embed_dim: int = 768, output_dim: int = 128, dropout: float = 0.2):
         super(AdditiveAttention, self).__init__()
 
-        self.proj = nn.Linear(input_dim, output_dim, bias=True)
+        self.proj = nn.Linear(embed_dim, output_dim, bias=True)
         self.tanh = nn.Tanh()
         self.proj_v = nn.Linear(output_dim, 1, bias=False)  # No bias for this layer, similar to A.
         self.dropout = nn.Dropout(dropout)
@@ -119,19 +119,19 @@ class AdditiveAttention(nn.Module):
 class NewsEncoder(nn.Module):
     def __init__(
         self,
-        input_dim: int = 768,
+        embed_dim: int = 768,
         output_dim: int = 128,
         num_heads: int = 8,
         dropout: float = 0.2,
     ):
         super(NewsEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            input_dim, num_heads, batch_first=True, dropout=dropout
+            embed_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(
-            input_dim=input_dim, output_dim=output_dim, dropout=dropout
+            embed_dim=embed_dim, output_dim=output_dim, dropout=dropout
         )
-        self.linear = nn.Linear(input_dim, output_dim)
+        self.linear = nn.Linear(embed_dim, output_dim)
         self.tanh = nn.Tanh()
 
         nn.init.xavier_normal_(self.linear.weight)
@@ -171,18 +171,18 @@ class NewsEncoder(nn.Module):
 class UserEncoder(nn.Module):
     def __init__(
         self,
-        input_dim: int = 128,
+        embed_dim: int = 128,
         num_heads: int = 8,
         dropout: float = 0.2,
     ):
         super(UserEncoder, self).__init__()
         self.multi_head_attention = nn.MultiheadAttention(
-            input_dim, num_heads, batch_first=True, dropout=dropout
+            embed_dim, num_heads, batch_first=True, dropout=dropout
         )
         self.additive_attention = AdditiveAttention(
-            input_dim=input_dim, output_dim=input_dim, dropout=dropout
+            embed_dim=embed_dim, output_dim=embed_dim, dropout=dropout
         )
-        self.linear = nn.Linear(input_dim, input_dim)
+        self.linear = nn.Linear(embed_dim, embed_dim)
         self.tanh = nn.Tanh()
 
         nn.init.xavier_normal_(self.linear.weight)
@@ -212,7 +212,7 @@ class UserEncoder(nn.Module):
 class NRMS(pl.LightningModule):
     def __init__(
         self,
-        input_dim: int = 768,
+        embed_dim: int = 768,
         encoder_dim: int = 128,
         num_heads_news_encoder: int = 8,
         num_heads_user_encoder: int = 8,
@@ -222,7 +222,7 @@ class NRMS(pl.LightningModule):
     ):
         super(NRMS, self).__init__()
 
-        self.input_dim = input_dim
+        self.embed_dim = embed_dim
         self.encoder_dim = encoder_dim  # news & user encoder output dimension
         self.num_heads_news_encoder = num_heads_news_encoder
         self.num_heads_user_encoder = num_heads_user_encoder
@@ -239,13 +239,13 @@ class NRMS(pl.LightningModule):
             param.requires_grad = True
 
         self.news_encoder = NewsEncoder(
-            input_dim=input_dim,
+            embed_dim=embed_dim,
             output_dim=encoder_dim,
             num_heads=num_heads_news_encoder,
             dropout=dropout,
         )
         self.user_encoder = UserEncoder(
-            input_dim=encoder_dim, dropout=dropout
+            embed_dim=encoder_dim, dropout=dropout
         )
         self.criterion = nn.CrossEntropyLoss()
 
@@ -341,7 +341,7 @@ class NRMS(pl.LightningModule):
         # forward
         embeddings = self.doc_encoder(reshaped_input_ids, reshaped_attention_mask)
         # rollback the shape and order
-        embeddings = embeddings.view(users, titles, seq_length, self.input_dim)
+        embeddings = embeddings.view(users, titles, seq_length, self.embed_dim)
         return embeddings  # shape: (users, titles, seq_length, embed_size)
 
     def forward_news_encoder(

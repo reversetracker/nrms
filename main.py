@@ -1,9 +1,7 @@
 import numpy as np
 import pandas as pd
-import pytest
 from torch.utils.data import DataLoader
 
-import datasets.v1
 import directories
 import models.v1
 from datasets.v1 import OheadlineDataset
@@ -12,9 +10,9 @@ BATCH_SIZE = 64  # users
 
 SEQUENCE_LENGTH = 20  # max sequence length
 
-INPUT_DIM: int = 768  # electra embeddings dimension
+EMBED_DIM: int = 768  # electra embeddings dimension
 
-OUTPUT_DIM: int = 128  # news encoder output dimension
+ENCODER_DIM: int = 128  # news encoder output dimension
 
 NUM_HEADS: int = 8  # 귀두 갯수
 

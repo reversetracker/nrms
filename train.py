@@ -13,7 +13,7 @@ import wandb
 from configs import settings
 from models.v1 import NRMS
 
-os.environ["WANDB_API_KEY"] = "7290cd5cb94c29300893438a08b4b6aa844149f3"
+os.environ["WANDB_API_KEY"] = settings.wandb_api_key
 
 
 PARALLEL_NUM = min(2, os.cpu_count())
@@ -26,9 +26,9 @@ def main():
     dataframe = pd.read_csv(directories.unittest_dataset_csv)
     dataset = datasets.v1.OheadlineDataset(
         dataframe,
-        max_articles=settings.article_size,
+        article_size=settings.article_size,
         sequence_size=settings.sequence_size,
-        embedding_dim=settings.input_dim,
+        embed_dim=settings.embed_dim,
         K=settings.K,
     )
 
@@ -61,7 +61,7 @@ def main():
     )
 
     nrms = NRMS(
-        input_dim=settings.input_dim,
+        embed_dim=settings.embed_dim,
         encoder_dim=settings.encoder_dim,
         num_heads_news_encoder=settings.num_heads_news_encoder,
         num_heads_user_encoder=settings.num_heads_user_encoder,

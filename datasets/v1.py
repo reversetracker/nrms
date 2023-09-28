@@ -32,18 +32,18 @@ class OheadlineDataset(Dataset):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        max_articles: int = 32,
+        article_size: int = 32,
         sequence_size: int = 20,
-        embedding_dim: int = 768,
+        embed_dim: int = 768,
         K: int = 4,
         tokenizer=None,
     ):
         self.dataframe = dataframe
         self.user_ids = self.dataframe["user_id"].unique()
         self.user_data_groups = dict(tuple(self.dataframe.groupby("user_id")))
-        self.max_articles = max_articles
+        self.article_size = article_size
         self.sequence_size = sequence_size
-        self.embedding_dim = embedding_dim
+        self.embed_dim = embed_dim
         self.K = K
         self.tokenizer = tokenizer or ElectraTokenizer.from_pretrained(
             "monologg/koelectra-base-v3-discriminator"
@@ -72,12 +72,12 @@ class OheadlineDataset(Dataset):
         random.shuffle(browsed_texts)
 
         candidate_text = clicked_texts.pop(0)
-        clicked_texts = clicked_texts[: self.max_articles]
+        clicked_texts = clicked_texts[: self.article_size]
         browsed_texts = browsed_texts[: self.K]
 
         # ADD PADDINGS
         # max_articles[32] 개를 채우지 못한 경우 '빈 문자열'을 패딩으로 채워서 32개의 기사로 만듬
-        clicked_texts = clicked_texts + [""] * (self.max_articles - len(clicked_texts))
+        clicked_texts = clicked_texts + [""] * (self.article_size - len(clicked_texts))
         # K[4] 개를 채우지 못한 경우 '중복' 기사로 채움
         browsed_texts = (browsed_texts * (self.K // len(browsed_texts)))[: self.K]
 
