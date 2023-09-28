@@ -37,18 +37,22 @@ def test_nrms_forward(sample_dataloader):
 
     # CLICKED
     clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
     clicked_key_padding_mask = clicked_tokens["key_padding_mask"]
     clicked_softmax_padding_mask = clicked_tokens["softmax_padding_mask"]
 
     # BROWSED
     labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
     labeled_key_padding_mask = labeled_tokens["key_padding_mask"]
 
     scores, c_weights, a_weights = nrms.forward(
         clicked_ids=clicked_input_ids,
+        clicked_attention_mask=clicked_attention_mask,
         clicked_key_padding_mask=clicked_key_padding_mask,
         clicked_softmax_padding_mask=clicked_softmax_padding_mask,
         labeled_ids=labeled_input_ids,
+        labeled_attention_mask=labeled_attention_mask,
         labeled_key_padding_mask=labeled_key_padding_mask,
     )
 

@@ -37,11 +37,13 @@ def test_forward_user_encoder(sample_dataloader):
 
     # CLICKED
     clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
     clicked_key_padding_mask = clicked_tokens["key_padding_mask"]
     clicked_softmax_padding_mask = clicked_tokens["softmax_padding_mask"]
 
     clicked_embeddings = nrms.forward_user_encoder(
         input_ids=clicked_input_ids,
+        attention_mask=clicked_attention_mask,
         key_padding_mask=clicked_key_padding_mask,
         softmax_padding_mask=clicked_softmax_padding_mask,
     )

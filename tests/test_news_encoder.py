@@ -37,11 +37,13 @@ def test_forward_news_encoder(sample_dataloader):
 
     # CLICKED
     clicked_input_ids = clicked_tokens["input_ids"]
+    clicked_attention_mask = clicked_tokens["attention_mask"]
     clicked_key_padding_mask = clicked_tokens["key_padding_mask"]
     clicked_softmax_padding_mask = clicked_tokens["softmax_padding_mask"]
 
     clicked_embeddings, _, __ = nrms.forward_news_encoder(
         input_ids=clicked_input_ids,
+        attention_mask=clicked_attention_mask,
         key_padding_mask=clicked_key_padding_mask,
         softmax_padding_mask=clicked_softmax_padding_mask,
     )
@@ -50,10 +52,12 @@ def test_forward_news_encoder(sample_dataloader):
 
     # LABELED
     labeled_input_ids = labeled_tokens["input_ids"]
+    labeled_attention_mask = labeled_tokens["attention_mask"]
     labeled_key_padding_mask = labeled_tokens["key_padding_mask"]
 
     labeled_embeddings, _, __ = nrms.forward_news_encoder(
         input_ids=labeled_input_ids,
+        attention_mask=labeled_attention_mask,
         key_padding_mask=labeled_key_padding_mask,
     )
     # (users, titles, encoder_dim)
