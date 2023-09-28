@@ -32,6 +32,7 @@ pip install -r requirements.txt
 
 - 이 그림은 4개의 네거티브와 1개의 포지티브 중 하나를 선택하는 소프트맥스를 나타냅니다. 
 - 소프트맥스의 결과 Candidate 는 약 35~38%의 확률을 나타냅니다.
+- 아직 수렴하지 않은 결과이고 aws 개같이 비싸서 훈련을 종료합니다.
 
 ![Validation Loss](./images/val_loss.png)
 
