@@ -243,18 +243,22 @@ class NRMS(pl.LightningModule):
     def forward(
         self,
         clicked_ids: torch.Tensor = None,
+        clicked_attention_mask: torch.Tensor = None,
         clicked_key_padding_mask: torch.Tensor = None,
         clicked_softmax_padding_mask: torch.Tensor = None,
         labeled_ids: torch.Tensor = None,
+        labeled_attention_mask: torch.Tensor = None,
         labeled_key_padding_mask: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Forward pass for the NRMS model.
 
         Args:
             clicked_ids (torch.Tensor): Input token ids for the clicked news. (users, titles, seq_length)
+            clicked_attention_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
             clicked_key_padding_mask (torch.Tensor): Attention mask for the clicked news. (users, titles, seq_length)
             clicked_softmax_padding_mask (torch.Tensor): Softmax padding mask for the clicked news. (users, titles, seq_length)
             labeled_ids (torch.Tensor): Input token ids for the labeled news. (users, titles, seq_length)
+            labeled_attention_mask (torch.Tensor): Attention mask for the labeled news. (users, titles, seq_length)
             labeled_key_padding_mask (torch.Tensor): Attention mask for the labeled news. (users, titles, seq_length)
         Returns:
             torch.Tensor: Scores for each candidate news. (users, K)
@@ -265,11 +269,17 @@ class NRMS(pl.LightningModule):
         if clicked_ids is None:
             raise ValueError("clicked_ids must be provided.")
 
+        if clicked_attention_mask is None:
+            raise ValueError("clicked_attention_mask must be provided.")
+
         if clicked_key_padding_mask is None:
             raise ValueError("clicked_key_padding_mask must be provided.")
 
         if labeled_ids is None:
             raise ValueError("labeled_ids must be provided.")
+
+        if labeled_attention_mask is None:
+            raise ValueError("labeled_attention_mask must be provided.")
 
         if labeled_key_padding_mask is None:
             raise ValueError("labeled_key_padding_mask must be provided.")
@@ -277,13 +287,15 @@ class NRMS(pl.LightningModule):
         # labeled
         news_vectors, c_weights, a_weights = self.forward_news_encoder(
             input_ids=labeled_ids,
-            key_padding_mask=labeled_key_padding_mask
+            attention_mask=labeled_attention_mask,
+            key_padding_mask=labeled_key_padding_mask,
         )
         # shape: (users, K + 1, encoder_dim)
 
         # clicked
         user_vectors = self.forward_user_encoder(
             input_ids=clicked_ids,
+            attention_mask=clicked_attention_mask,
             key_padding_mask=clicked_key_padding_mask,
             softmax_padding_mask=clicked_softmax_padding_mask,
         )
@@ -320,6 +332,7 @@ class NRMS(pl.LightningModule):
     def forward_news_encoder(
         self,
         input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
         key_padding_mask: torch.Tensor,
         softmax_padding_mask: torch.Tensor = None,
     ):
@@ -327,6 +340,7 @@ class NRMS(pl.LightningModule):
 
         Args:
             input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
+            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
             key_padding_mask (torch.Tensor): Key Padding mask. (users, titles, seq_length)
             softmax_padding_mask (torch.Tensor): Softmax padding mask. (users, titles, seq_length)
 
@@ -334,7 +348,7 @@ class NRMS(pl.LightningModule):
             torch.Tensor: News embeddings. (users, titles, encoder_dim)
         """
 
-        embeddings = self.forward_doc_encoder(input_ids, key_padding_mask)
+        embeddings = self.forward_doc_encoder(input_ids, attention_mask)
         users, titles, seq_length, embed_size = embeddings.shape
 
         embeddings = embeddings.view(users * titles, seq_length, embed_size)
@@ -353,6 +367,7 @@ class NRMS(pl.LightningModule):
     def forward_user_encoder(
         self,
         input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
         key_padding_mask: torch.Tensor,
         softmax_padding_mask: torch.Tensor = None,
     ):
@@ -360,6 +375,7 @@ class NRMS(pl.LightningModule):
 
         Args:
             input_ids (torch.Tensor): Input token ids. (users, titles, seq_length)
+            attention_mask (torch.Tensor): Attention mask. (users, titles, seq_length)
             key_padding_mask (torch.Tensor): Key padding mask. (users, titles, seq_length)
             softmax_padding_mask (torch.Tensor): Softmax padding mask. (users, titles, seq_length)
 
@@ -368,6 +384,7 @@ class NRMS(pl.LightningModule):
         """
         news_vectors, _, __ = self.forward_news_encoder(
             input_ids=input_ids,
+            attention_mask=attention_mask,
             key_padding_mask=key_padding_mask,
             softmax_padding_mask=softmax_padding_mask,
         )
@@ -385,9 +402,11 @@ class NRMS(pl.LightningModule):
 
         scores, c_weights, a_weights = self.forward(
             clicked_ids=clicked_tokens["input_ids"],
+            clicked_attention_mask=clicked_tokens["attention_mask"],
             clicked_key_padding_mask=clicked_tokens["key_padding_mask"],
             clicked_softmax_padding_mask=clicked_tokens["softmax_padding_mask"],
             labeled_ids=labeled_tokens["input_ids"],
+            labeled_attention_mask=labeled_tokens["attention_mask"],
             labeled_key_padding_mask=labeled_tokens["key_padding_mask"],
         )
 
