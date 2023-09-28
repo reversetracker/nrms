@@ -30,8 +30,10 @@ pip install -r requirements.txt
 
 ## Validation Loss
 
-![Validation Loss](./images/val_loss.png)
+- 이 그림은 4개의 네거티브와 1개의 포지티브 중 하나를 선택하는 소프트맥스를 나타냅니다. 
+- 소프트맥스의 결과 Candidate 는 약 35~38%의 확률을 나타냅니다.
 
+![Validation Loss](./images/val_loss.png)
 
 
 # NRMS Approach for News Recommendation
