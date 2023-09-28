@@ -10,34 +10,27 @@ from torch.utils.data import DataLoader
 import datasets.v1
 import directories
 import wandb
+from configs import settings
 from models.v1 import NRMS
 
 os.environ["WANDB_API_KEY"] = "7290cd5cb94c29300893438a08b4b6aa844149f3"
 
 
-PARALLEL_NUM = min(4, os.cpu_count())
-
-BATCH_SIZE = 128  # users
-
-TITLES = 64  # articles
-
-SEQ_LENGTH = 20  # words number of each article
-
-EMBED_SIZE = 768  # embedding size
-
-NUM_HEADS_NEWS_ENCODER = 16  # number of heads
-
-NUM_HEADS_USER_ENCODER = 8  # number of heads
-
-ENCODER_DIM = 128  # encoder dimension
+PARALLEL_NUM = min(2, os.cpu_count())
 
 
 def main():
     wandb.init(project="nrms")
     wandb_logger = WandbLogger()
 
-    dataframe = pd.read_csv(directories.train_dataset_csv)
-    dataset = datasets.v1.OheadlineDataset(dataframe)
+    dataframe = pd.read_csv(directories.unittest_dataset_csv)
+    dataset = datasets.v1.OheadlineDataset(
+        dataframe,
+        max_articles=settings.article_size,
+        sequence_size=settings.sequence_size,
+        embedding_dim=settings.input_dim,
+        K=settings.K,
+    )
 
     train_size = int(0.94 * len(dataset))
     val_size = int(0.03 * len(dataset))
@@ -48,30 +41,33 @@ def main():
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=settings.batch_size,
         shuffle=True,
         num_workers=PARALLEL_NUM,
     )
 
     val_loader = DataLoader(
         val_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=settings.batch_size,
         shuffle=False,
         num_workers=PARALLEL_NUM,
     )
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=settings.batch_size,
         shuffle=False,
         num_workers=PARALLEL_NUM,
     )
 
     nrms = NRMS(
-        input_dim=EMBED_SIZE,
-        encoder_dim=ENCODER_DIM,
-        num_heads_news_encoder=NUM_HEADS_NEWS_ENCODER,
-        num_heads_user_encoder=NUM_HEADS_USER_ENCODER,
+        input_dim=settings.input_dim,
+        encoder_dim=settings.encoder_dim,
+        num_heads_news_encoder=settings.num_heads_news_encoder,
+        num_heads_user_encoder=settings.num_heads_user_encoder,
+        lr=settings.lr,
+        weight_decay=settings.weight_decay,
+        dropout=settings.dropout,
     )
 
     # Define callbacks below

@@ -96,12 +96,13 @@ class DeprecatedAdditiveAttention(nn.Module):
 class AdditiveAttention(nn.Module):
     """Additive Attention learns the importance of each word in the sequence."""
 
-    def __init__(self, input_dim: int = 768, output_dim: int = 128):
+    def __init__(self, input_dim: int = 768, output_dim: int = 128, dropout: float = 0.2):
         super(AdditiveAttention, self).__init__()
 
         self.proj = nn.Linear(input_dim, output_dim, bias=True)
-        self.proj_v = nn.Linear(output_dim, 1, bias=False)  # No bias for this layer, similar to A.
         self.tanh = nn.Tanh()
+        self.proj_v = nn.Linear(output_dim, 1, bias=False)  # No bias for this layer, similar to A.
+        self.dropout = nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=1)
 
         nn.init.xavier_normal_(self.proj.weight)
@@ -109,6 +110,7 @@ class AdditiveAttention(nn.Module):
     def forward(self, x: torch.Tensor):
         x_proj = self.proj(x)
         x_proj = self.tanh(x_proj)
+        # x_proj = self.dropout(x_proj)
         attn_scores = self.proj_v(x_proj).squeeze(-1)
         attn_probs = self.softmax(attn_scores)
         return attn_probs
@@ -126,7 +128,9 @@ class NewsEncoder(nn.Module):
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
         )
-        self.additive_attention = AdditiveAttention(input_dim, output_dim)
+        self.additive_attention = AdditiveAttention(
+            input_dim=input_dim, output_dim=output_dim, dropout=dropout
+        )
         self.linear = nn.Linear(input_dim, output_dim)
         self.tanh = nn.Tanh()
 
@@ -175,7 +179,9 @@ class UserEncoder(nn.Module):
         self.multi_head_attention = nn.MultiheadAttention(
             input_dim, num_heads, batch_first=True, dropout=dropout
         )
-        self.additive_attention = AdditiveAttention(input_dim, input_dim)
+        self.additive_attention = AdditiveAttention(
+            input_dim=input_dim, output_dim=input_dim, dropout=dropout
+        )
         self.linear = nn.Linear(input_dim, input_dim)
         self.tanh = nn.Tanh()
 
@@ -210,6 +216,9 @@ class NRMS(pl.LightningModule):
         encoder_dim: int = 128,
         num_heads_news_encoder: int = 8,
         num_heads_user_encoder: int = 8,
+        lr: float = 2e-4,
+        weight_decay: float = 1e-5,
+        dropout: float = 0.2,
     ):
         super(NRMS, self).__init__()
 
@@ -217,6 +226,9 @@ class NRMS(pl.LightningModule):
         self.encoder_dim = encoder_dim  # news & user encoder output dimension
         self.num_heads_news_encoder = num_heads_news_encoder
         self.num_heads_user_encoder = num_heads_user_encoder
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.dropout = dropout
 
         self.doc_encoder = DocEncoder()
 
@@ -230,8 +242,11 @@ class NRMS(pl.LightningModule):
             input_dim=input_dim,
             output_dim=encoder_dim,
             num_heads=num_heads_news_encoder,
+            dropout=dropout,
         )
-        self.user_encoder = UserEncoder(encoder_dim)
+        self.user_encoder = UserEncoder(
+            input_dim=encoder_dim, dropout=dropout
+        )
         self.criterion = nn.CrossEntropyLoss()
 
         self.training_step_outputs = []
@@ -417,7 +432,7 @@ class NRMS(pl.LightningModule):
         return loss, c_weights, a_weights
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=2e-4, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         # scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
         return {
             "optimizer": optimizer,
