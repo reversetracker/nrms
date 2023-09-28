@@ -10,31 +10,37 @@ poetry install
 pip install -r requirements.txt
 ```
 
-# Train Results
+# Training Outcomes
 
-## Additive Attention
+## Additive Attention Visualization
 
-<p float="left">
-  <img src="./images/additive_attention_1.png" width="30%" />
-  <img src="./images/additive_attention_2.png" width="30%" /> 
-  <img src="./images/additive_attention_3.png" width="30%" />
-</p>
+<div style="text-align: center;">
+  <img src="./images/additive_attention_1.png" width="30%" alt="Additive Attention Image 1">
+  <img src="./images/additive_attention_2.png" width="30%" alt="Additive Attention Image 2">
+  <img src="./images/additive_attention_3.png" width="30%" alt="Additive Attention Image 3">
+</div>
 
-## Attention
+## Attention Visualization
 
-<p float="left">
-  <img src="./images/attention_1.png" width="30%" />
-  <img src="./images/attention_2.png" width="30%" /> 
-  <img src="./images/attention_3.png" width="30%" />
-</p>
+<div style="text-align: center;">
+  <img src="./images/attention_1.png" width="30%" alt="Attention Image 1">
+  <img src="./images/attention_2.png" width="30%" alt="Attention Image 2">
+  <img src="./images/attention_3.png" width="30%" alt="Attention Image 3">
+</div>
 
-## Validation Loss
+- The model predominantly focuses on word features, seemingly independent of position. Thus, Positional Embedding was excluded in this particular analysis, leading to the current attention visualization.
+- Upon procuring sufficient funds, the intention is to reintroduce the Positional Embedding for further evaluation.
 
-- 이 그림은 4개의 네거티브와 1개의 포지티브 중 하나를 선택하는 소프트맥스를 나타냅니다. 
-- 소프트맥스의 결과 Candidate 는 약 35~38%의 확률을 나타냅니다.
-- 아직 수렴하지 않은 결과이고 aws 개같이 비싸서 훈련을 종료합니다.
+## Validation Loss Analysis
 
-![Validation Loss](./images/val_loss.png)
+- The depicted chart represents a softmax output when choosing one positive instance amongst four negatives.
+- The softmax outcome for the candidate displays a probability in the range of approximately 35-38%.
+- The model has not yet converged to its optimal performance. However, due to the prohibitive costs associated with AWS, the training has been halted.
+
+<div style="text-align: center;">
+  <img src="./images/val_loss.png" alt="Validation Loss Visualization">
+</div>
+
 
 
 # NRMS Approach for News Recommendation
