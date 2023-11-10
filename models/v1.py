@@ -3,10 +3,8 @@ import logging
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 from torch import optim
-from torch.autograd import Variable
 from transformers import ElectraModel, BatchEncoding
 
 import utils
@@ -15,21 +13,29 @@ logger = logging.getLogger(__name__)
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int = 512, dropout: float = 0.1, max_len: int = 5000):
+    def __init__(
+        self,
+        d_model: int = 512,
+        max_len: int = 5000,
+        scale: int = 10000,
+        dropout: float = 0.1,
+    ):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(dropout)
 
         # Compute the positional encodings in log space
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * -(torch.log(torch.Tensor([10000.0])) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * -(torch.log(torch.Tensor([scale])) / d_model)
+        )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
         self.register_buffer("pe", pe)
 
     def forward(self, x):
-        x = x + Variable(self.pe[:, : x.size(1)], requires_grad=False)
+        x = x + self.pe[:, : x.size(1)]
         return self.dropout(x)
 
 
@@ -38,13 +44,17 @@ class PositionalMultiheadAttention(nn.Module):
         self,
         d_model: int = 512,
         num_heads: int = 8,
+        max_len: int = 5000,
+        scale: int = 10000,
         dropout: float = 0.1,
         *args,
         **kwargs,
     ):
         super(PositionalMultiheadAttention, self).__init__(*args, **kwargs)
 
-        self.positional_encoding = PositionalEncoding(d_model, dropout=dropout)
+        self.positional_encoding = PositionalEncoding(
+            d_model, max_len=max_len, scale=scale, dropout=dropout
+        )
         self.multi_head_attention = nn.MultiheadAttention(d_model, num_heads, dropout=dropout)
 
     def forward(
