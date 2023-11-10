@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int = 512, dropout: float = .1, max_len: int = 5000):
+    def __init__(self, d_model: int = 512, dropout: float = 0.1, max_len: int = 5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(dropout)
 
@@ -26,35 +26,40 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
-        x = x + Variable(self.pe[:, :x.size(1)], requires_grad=False)
+        x = x + Variable(self.pe[:, : x.size(1)], requires_grad=False)
         return self.dropout(x)
 
 
-class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, d_model, num_heads):
-        super(MultiHeadSelfAttention, self).__init__()
-        self.q_linear = nn.Linear(d_model, d_model, bias=False)
-        self.k_linear = nn.Linear(d_model, d_model, bias=False)
-        self.v_linear = nn.Linear(d_model, d_model, bias=False)
-        self.num_heads = num_heads
+class PositionalMultiheadAttention(nn.Module):
+    def __init__(
+        self,
+        d_model: int = 512,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+        *args,
+        **kwargs,
+    ):
+        super(PositionalMultiheadAttention, self).__init__(*args, **kwargs)
 
-    def forward(self, x):
-        batch_size, seq_len, d_model = x.size()
-        head_dim = d_model // self.num_heads
+        self.positional_encoding = PositionalEncoding(d_model, dropout=dropout)
+        self.multi_head_attention = nn.MultiheadAttention(d_model, num_heads, dropout=dropout)
 
-        q = self.q_linear(x).view(batch_size, seq_len, self.num_heads, head_dim)
-        k = self.k_linear(x).view(batch_size, seq_len, self.num_heads, head_dim)
-        v = self.v_linear(x).view(batch_size, seq_len, self.num_heads, head_dim)
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding_mask: torch.Tensor = None,
+        use_positional_encoding: bool = True,
+    ):
+        if use_positional_encoding:
+            x = self.positional_encoding(x)
 
-        scores = torch.einsum("ijkl,ijml->ijkm", q, k) / (head_dim**0.5)
-        attn = F.softmax(scores, dim=-1)
-        context = torch.einsum("ijkm,ijml->ijkl", attn, v)
-
-        context = context.contiguous().view(batch_size, seq_len, d_model)
-        return context
+        context, context_weights = self.multi_head_attention(
+            x, x, x, key_padding_mask=key_padding_mask
+        )
+        return context, context_weights
 
 
 class DocEncoder(nn.Module):
@@ -244,9 +249,7 @@ class NRMS(pl.LightningModule):
             num_heads=num_heads_news_encoder,
             dropout=dropout,
         )
-        self.user_encoder = UserEncoder(
-            embed_dim=encoder_dim, dropout=dropout
-        )
+        self.user_encoder = UserEncoder(embed_dim=encoder_dim, dropout=dropout)
         self.criterion = nn.CrossEntropyLoss()
 
         self.training_step_outputs = []

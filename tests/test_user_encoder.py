@@ -49,4 +49,3 @@ def test_forward_user_encoder(sample_dataloader):
     )
     # (users, encoder_dim)
     assert clicked_embeddings.shape == (64, 128)
-

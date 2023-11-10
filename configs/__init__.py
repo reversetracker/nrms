@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-
     batch_size: int = 64
 
     article_size: int = 32
