@@ -13,6 +13,7 @@ pip install -r requirements.txt
 ## 3. Paper
 ```
 https://wuch15.github.io/paper/EMNLP2019-NRMS.pdf
+https://arxiv.org/abs/1706.03762
 ```
 
 # Unresolved Troubleshooting
