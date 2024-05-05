@@ -14,7 +14,7 @@ EMBED_DIM: int = 768  # electra embeddings dimension
 
 ENCODER_DIM: int = 128  # news encoder output dimension
 
-NUM_HEADS: int = 8  # 귀두 갯수
+NUM_HEADS: int = 8  # 머리 갯수
 
 np.random.seed(42)  # 원하는 시드 값으로 변경 가능
 

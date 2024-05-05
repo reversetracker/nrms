@@ -15,7 +15,7 @@ INPUT_DIM: int = 768  # electra embeddings dimension
 
 OUTPUT_DIM: int = 128  # news encoder output dimension
 
-NUM_HEADS: int = 8  # 귀두 갯수
+NUM_HEADS: int = 8  # 머리 갯수
 
 
 @pytest.fixture
